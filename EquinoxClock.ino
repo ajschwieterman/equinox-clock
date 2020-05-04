@@ -15,7 +15,7 @@
 #define CYCLONE_PIN 13  
 #define PHOTOCELL_PIN A0
 #define LED_PIN    14
-#define LED_COUNT 60//240  //LED_COUNT must be divisible by NUMBER_OF_MINUTES
+#define LED_COUNT 240  //LED_COUNT must be divisible by NUMBER_OF_MINUTES
 #define NUMBER_OF_MINUTES 60
 #define NUMBER_OF_LEDS_PER_SECOND 2
 #define NUMBER_OF_LEDS_PER_MINUTE 4
@@ -48,7 +48,7 @@ const long utcOffsetInSeconds = -18000;  //For UTC -5.00 : -5 * 60 * 60
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 ESP8266WebServer server;
-int pixelOffset = 25;//118;
+int pixelOffset = 118;
 int hours = 0;
 int minutes = 0;
 int seconds = 0;
@@ -164,24 +164,24 @@ void loop() {
   readAmbientBrightness();
 
   //Monitor the mode button to change the clock's mode
-//  buttonState = digitalRead(BUTTON_PIN);
-//  if (buttonState != previousButtonState) {
-//    if (buttonState == HIGH) {
-//      switch (clockMode) {
-//        case NORMAL:
-//          clockMode = PROGRAM;
-//          numberOfSteps = 50;
-//          stepIndex = 0;
-//          up = true;
-//          break;
-//        case PROGRAM:
-//          clockMode = NORMAL;
-//          break;
-//      }
-//    }
-//    delay(50);
-//  }
-//  previousButtonState = buttonState;
+  buttonState = digitalRead(BUTTON_PIN);
+  if (buttonState != previousButtonState) {
+    if (buttonState == HIGH) {
+      switch (clockMode) {
+        case NORMAL:
+          clockMode = PROGRAM;
+          numberOfSteps = 50;
+          stepIndex = 0;
+          up = true;
+          break;
+        case PROGRAM:
+          clockMode = NORMAL;
+          break;
+      }
+    }
+    delay(50);
+  }
+  previousButtonState = buttonState;
 
   //Switch between the various modes
   switch (clockMode) {
