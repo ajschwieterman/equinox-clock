@@ -289,7 +289,7 @@ void loop() {
 /**
  * Get the analog read from the photocell.
  */
-int readAmbientBrightness() {
+void readAmbientBrightness() {
   brightness = max(10, (int)(pgm_read_byte(&gamma8[map(analogRead(PHOTOCELL_PIN), 0, 1024, 0, 255)])));
 }
 
