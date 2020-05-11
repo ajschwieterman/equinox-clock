@@ -93,6 +93,18 @@ void setup() {
 
   //Start the EEPROM service
   EEPROM.begin(EEPROM_SIZE);
+    
+  //Do some initializing
+  boolean isMemoryDefaulted = true;
+  for (int i = 0; i < EEPROM_SIZE; i++) {
+    if (EEPROM.read(i) != 0xFF) {
+      isMemoryDefaulted = false;
+      break;
+    }
+  }
+  if (isMemoryDefaulted) {
+    initializeColors();
+  }
   inDaylightSavingsTime = (EEPROM.read(6) == 0x01);
   clockMode = NORMAL;
   
