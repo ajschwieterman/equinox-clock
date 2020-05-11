@@ -9,8 +9,8 @@
 #include <TimeLib.h>
 
 #ifndef STASSID
-#define STASSID "Tangy Elephants"
-#define STAPSK  "Tintlab3A"
+#define STASSID ""
+#define STAPSK  ""
 #define BUTTON_PIN  12
 #define CYCLONE_PIN 13  
 #define PHOTOCELL_PIN A0
