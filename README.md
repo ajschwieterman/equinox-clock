@@ -11,3 +11,4 @@ Arduino code for a Wi-Fi connected clock.
 - NTPClient v3.2.0
 - Adafruit NeoPixel v1.5.3
 - Time v1.6.0
+- ArduinoJson v6.15.1
