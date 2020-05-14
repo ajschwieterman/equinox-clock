@@ -7,6 +7,7 @@
 #include <NTPClient.h>
 #include <Adafruit_NeoPixel.h>
 #include <TimeLib.h>
+#include <ArduinoJson.h>
 
 #ifndef STASSID
 #define STASSID ""
@@ -76,6 +77,9 @@ uint8_t r;
 uint8_t g;
 uint8_t b;
 ClockMode clockMode;
+int notify_flash;
+int notify_duration;
+uint32_t notify_color;
 boolean up = true;
 
 void setup() {
@@ -135,6 +139,53 @@ void setup() {
     stepIndex = 0;
     up = true;
   });
+
+    //Trigger equinox json sensors
+  server.on("/equinox", [](){
+    StaticJsonDocument<500> doc;
+    //readAmbientBrightness();
+
+    JsonArray illumValues = doc.createNestedArray("brightness");
+    illumValues.add(brightness);  
+
+    
+    // Write JSON document
+    String json;
+    serializeJsonPretty(doc, json);
+    server.send(200, "application/json", json);
+  });
+
+    //override mode with notify service
+  server.on("/notify", [](){
+    clockMode = NOTIFICATION;
+    //numberOfSteps = 50;
+    stepIndex = 0;
+    up = true;
+    String message = "Number of args received:";
+    message += server.args();            //Get number of parameters
+    message += "\n";                            //Add a new line
+    
+    for (int i = 0; i < server.args(); i++) {
+      if (server.argName(i)== "duration"){
+        notify_duration = millis() + server.arg(i).toInt();
+        
+      } else if (server.argName(i) ==  "flash"){
+        notify_flash = server.arg(i).toInt();
+      }
+      else if (server.argName(i) == "color"){        
+        notify_color = server.arg(i).toInt(); //32bit color
+      } 
+      message += "Arg nº" + (String)i + " –> ";   //Include the current iteration value
+      message += server.argName(i) + ": ";     //Get the name of the parameter
+      message += server.arg(i) + "\n";              //Get the value of the parameter
+    } 
+    server.send(200, "text/plain", message);       //Response to the HTTP request
+    
+    
+    
+  });
+
+  
 
   //Start the web server service
   server.begin();
@@ -295,6 +346,34 @@ void loop() {
       //Handle incoming over-the-air updates
       ArduinoOTA.handle();
       break;
+    case NOTIFICATION:
+      //Display the colors on the clock
+      if (notify_flash > 0){
+        colorWipe(strip.Color(map(stepIndex, 0, notify_flash, 0x00, Red(notify_color)), map(stepIndex, 0, notify_flash, 0x00, Green(notify_color)),map(stepIndex, 0, notify_flash, 0x00, Blue(notify_color))));
+      } else{
+        colorWipe(strip.Color(  Red(notify_color),  Green(notify_color),  Blue(notify_color)));
+      }
+      delay(10);
+
+      //Increment or decrement the step index based on the fading direction
+      if (up) {
+        stepIndex++;
+      } else {
+        stepIndex--;
+      }
+
+      //Determine if it is time to change the fading direction
+      if (stepIndex == notify_flash) {
+        up = false;
+      } else if (stepIndex == 1) {
+        up = true;
+      }
+
+      if (millis() >= notify_duration){
+        clockMode = NORMAL;
+      }
+      break;
+      
   }
 }
 
