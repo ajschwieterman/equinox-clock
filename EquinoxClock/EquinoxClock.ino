@@ -121,8 +121,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(5000);
-    ESP.restart();
+    delay(500);
+    Serial.print(".");
+    //ESP.restart();
   }
 
   //Trigger normal mode
@@ -258,14 +259,14 @@ void loop() {
       if (pureSeconds != timeClient.getSeconds()) {
 
         //Save the color information in EEPROM every hour
-        if (pureHours != ((timeClient.getHours() + daylightSavingsTimeAdjustment()) % 12)) {
+        if (pureHours != (timeClient.getHours() + daylightSavingsTimeAdjustment())) {
           EEPROM.write(0, (hourColor & 0xFF00) >> 8);
           EEPROM.write(1, (hourColor & 0xFF));
           EEPROM.write(2, (minuteColor & 0xFF00) >> 8);
           EEPROM.write(3, (minuteColor & 0xFF));
           EEPROM.write(4, (secondColor & 0xFF00) >> 8);
           EEPROM.write(5, (secondColor & 0xFF));
-          EEPROM.commit();
+          EEPROM.commit();  //This method takes ~150ms to complete, which hiccups the seconds light smoothness for just that second
         }
         
         //Update local time variables
@@ -373,7 +374,6 @@ void loop() {
         clockMode = NORMAL;
       }
       break;
-      
   }
 }
 
