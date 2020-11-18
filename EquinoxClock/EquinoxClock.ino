@@ -94,6 +94,7 @@ void setup() {
 
   //Start the NTP time client service
   timeClient.begin();
+  timeClient.forceUpdate();
 
   //Start the EEPROM service
   EEPROM.begin(EEPROM_SIZE);
@@ -141,7 +142,7 @@ void setup() {
     up = true;
   });
 
-    //Trigger equinox json sensors
+  //Trigger equinox json sensors
   server.on("/equinox", [](){
     StaticJsonDocument<500> doc;
     //readAmbientBrightness();
@@ -156,7 +157,7 @@ void setup() {
     server.send(200, "application/json", json);
   });
 
-    //override mode with notify service
+  //override mode with notify service
   server.on("/notify", [](){
     clockMode = NOTIFICATION;
     //numberOfSteps = 50;
@@ -181,9 +182,6 @@ void setup() {
       message += server.arg(i) + "\n";              //Get the value of the parameter
     } 
     server.send(200, "text/plain", message);       //Response to the HTTP request
-    
-    
-    
   });
 
   
@@ -252,14 +250,14 @@ void loop() {
     case NORMAL:
     case INVERSE:
       //Get the current time
-      timeClient.update();
       currentTime = millis();
 
       //Did the time change?
       if (pureSeconds != timeClient.getSeconds()) {
 
-        //Save the color information in EEPROM every hour
+        //Save the color information in EEPROM and fetch time from server every hour
         if (pureHours != (timeClient.getHours() + daylightSavingsTimeAdjustment())) {
+          timeClient.forceUpdate();
           EEPROM.write(0, (hourColor & 0xFF00) >> 8);
           EEPROM.write(1, (hourColor & 0xFF));
           EEPROM.write(2, (minuteColor & 0xFF00) >> 8);
@@ -270,7 +268,7 @@ void loop() {
         }
         
         //Update local time variables
-        pureHours = (timeClient.getHours() + daylightSavingsTimeAdjustment() % 12);
+        pureHours = timeClient.getHours() + daylightSavingsTimeAdjustment();
         pureMinutes = timeClient.getMinutes();
         pureSeconds = timeClient.getSeconds();
         startTime = currentTime;
