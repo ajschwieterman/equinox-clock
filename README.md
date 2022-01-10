@@ -16,8 +16,16 @@ Below is the wiring that I used to supply 5V of power to the NeoPixels and contr
 Below is the circuit diagram for the buttons, light sensor, and NeoPixels.
 ![Main](https://github.com/ajschwieterman/equinox-clock/blob/master/schematic.png)
 
+# Required board libraries
+Follow [these instructions](https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/using-arduino-ide) to install the Adafruit board libraries
+
+- esp8266 v3.0.2
+  - Adafruit Feather HUZZAH ESP8266
+
 # Required Arduino libraries
-- Adafruit NeoPixel v1.5.3
-- ArduinoJson v6.15.1
+- Adafruit NeoPixel v1.10.3
+- ArduinoJson v6.18.5
+- BobaBlox v2.0.1
 - NTPClient v3.2.0
-- Time v1.6.0
+- Time v1.6.1
+- Timer v1.2.1

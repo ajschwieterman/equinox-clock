@@ -1,507 +1,546 @@
-#include <EEPROM.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266WebServer.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-#include <NTPClient.h>
 #include <Adafruit_NeoPixel.h>
-#include <TimeLib.h>
+#include <Arduino.h>
 #include <ArduinoJson.h>
+#include <ArduinoOTA.h>
+#include <BobaBlox.h>
+#include <EEPROM.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
+#include <NTPClient.h>
+#include <TimeLib.h>
+#include <Timer.h>
+#include <WiFiUdp.h>
 
-#ifndef STASSID
-#define STASSID ""
-#define STAPSK  ""
-#define BUTTON_PIN  12
-#define CYCLONE_PIN 13  
-#define PHOTOCELL_PIN A0
-#define LED_PIN    14
-#define LED_COUNT 240  //LED_COUNT must be divisible by NUMBER_OF_MINUTES
-#define NUMBER_OF_MINUTES 60
-#define NUMBER_OF_LEDS_PER_SECOND 2
-#define NUMBER_OF_LEDS_PER_MINUTE 4
-#define NUMBER_OF_LEDS_PER_HOUR 8
-#define EEPROM_SIZE 7
-#endif
+#define BUTTON_PIN                                12
+#define DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS      0x06
+#define DAYLIGHT_SAVINGS_TIME_OFF                 0x00
+#define DAYLIGHT_SAVINGS_TIME_ON                  0x01
+#define EEPROM_DEFAULT                            0xFF
+#define EEPROM_SIZE                               7
+#define HOUR_CHUNK_SIZE                           8
+#define HOUR_COLOR_DEFAULT                        NEOPIXEL_COLOR_RED
+#define HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS       0x00
+#define HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS        0x01
+#define INITIALIZATION_DELAY_MS                   500
+#define INITIALIZATION_ERROR_FLASH_COLOR          NEOPIXEL_COLOR_RED
+#define INITIALIZATION_ERROR_FLASH_FREQUENCY_HZ   0.5
+#define INITIALIZATION_TIMEOUT_MS                 30000
+#define MIN_PER_HOUR                              ((time_t)(SECS_PER_HOUR / SECS_PER_MIN))
+#define MINUTE_CHUNK_SIZE                         4
+#define MINUTE_COLOR_DEFAULT                      NEOPIXEL_COLOR_GREEN
+#define MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS     0x02
+#define MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS      0x03
+#define MS_PER_SEC                                1000
+#define NEOPIXEL_COLOR_BLUE                       0xAAAA
+#define NEOPIXEL_COLOR_GREEN                      0x5555
+#define NEOPIXEL_COLOR_ORANGE                     0x1555
+#define NEOPIXEL_COLOR_RED                        0x0000
+#define NEOPIXEL_COLOR_WHITE                      0x0000
+#define NEOPIXEL_COUNT                            240
+#define NEOPIXEL_FADING_TIME_MS                   (MS_PER_SEC / NEOPIXEL_PER_MIN)
+#define NEOPIXEL_OFFSET                           118
+#define NEOPIXEL_PIN                              14
+#define NEOPIXEL_PER_MIN                          (NEOPIXEL_COUNT / MIN_PER_HOUR)
+#define NEOPIXEL_SATURATION_OFF                   0x00
+#define NEOPIXEL_SATURATION_ON                    0xFF
+#define NEOPIXEL_VALUE_OFF                        0x00
+#define NOTIFICATION_FLASH_COLOR                  NEOPIXEL_COLOR_ORANGE
+#define NOTIFICATION_FLASH_FREQUENCY_HZ           0.5
+#define NOTIFICATION_TIMEOUT_MS                   10000
+#define PHOTOCELL_MINIMUM_BRIGHTNESS              5
+#define PHOTOCELL_PIN                             A0
+#define PROGRAM_END_COLOR                         NEOPIXEL_COLOR_GREEN
+#define PROGRAM_ERROR_COLOR                       NEOPIXEL_COLOR_RED
+#define PROGRAM_FLASH_COLOR                       NEOPIXEL_COLOR_BLUE
+#define PROGRAM_FLASH_FREQUENCY_HZ                0.5
+#define PROGRAM_PROGRESS_COLOR                    NEOPIXEL_COLOR_ORANGE
+#define SECOND_CHUNK_SIZE                         2
+#define SECOND_COLOR_DEFAULT                      NEOPIXEL_COLOR_BLUE
+#define SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS     0x04
+#define SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS      0x05
+#define UTC_POOL_SERVER_NAME                      "pool.ntp.org"
+#define UTC_TIME_OFFSET_SECONDS                   -18000  /* For UTC -5.00 : -5 * 60 * 60 */
+#define UTC_UPDATE_INTERVAL_MS                    ((time_t)(SECS_PER_DAY * MS_PER_SEC))
+#define WIFI_SSID                                 ""
+#define WIFI_PASSWORD                             ""
 
-const uint8_t PROGMEM gamma8[] = {
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
-    1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
-    2,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,
-    5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,  9,  9,  9, 10,
-   10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
-   17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
-   25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
-   37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
-   51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
-   69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
-   90, 92, 93, 95, 96, 98, 99,101,102,104,105,107,109,110,112,114,
-  115,117,119,120,122,124,126,127,129,131,133,135,137,138,140,142,
-  144,146,148,150,152,154,156,158,160,162,164,167,169,171,173,175,
-  177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
-  215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
-enum  ClockMode {NORMAL, INVERSE, PROGRAM, NOTIFICATION};
-const char* ssid = STASSID;
-const char* password = STAPSK;
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
-const long utcOffsetInSeconds = -18000;  //For UTC -5.00 : -5 * 60 * 60
+// #if ((NEOPIXEL_COUNT % MIN_PER_HOUR) != 0)
+// #error "NEOPIXEL_COUNT must be divisible by 60!"
+// #endif
+
+/** Define hardware */
+Button button(BUTTON_PIN);
+Adafruit_NeoPixel neopixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
-ESP8266WebServer server;
-int pixelOffset = 118;
-int hours = 0;
-int minutes = 0;
-int seconds = 0;
-int pureHours = 0;
-int pureMinutes = 0;
-int pureSeconds = 0;
-boolean inDaylightSavingsTime;
-unsigned long currentTime = 0;
-unsigned long startTime = 0;
-int numberOfPixlesPerMinute = LED_COUNT / NUMBER_OF_MINUTES;
-uint32_t clockColors[LED_COUNT];
-uint32_t clockPreviousColors[LED_COUNT];
+Photocell photocell(PHOTOCELL_PIN);
+NTPClient timeClient(ntpUDP, UTC_POOL_SERVER_NAME, UTC_TIME_OFFSET_SECONDS, UTC_UPDATE_INTERVAL_MS);
+ESP8266WebServer webServer;
+
+/* Define modes */
+enum Mode {
+  INITIALIZE,
+  NORMAL,
+  NOTIFICATION,
+  PROGRAM
+};
+
+/* Other variables */
+uint8_t bluePigment;
+int brightness;
+uint32_t clockColors[NEOPIXEL_COUNT];
+int currentTimeMilliseconds;
+unsigned long epochTime;
+int fadingIndex;
+Timer flashTimer(MILLIS);
+uint8_t greenPigment;
 uint16_t hourColor;
+bool inDaylightSavingsTime;
+Timer initializationTimer(MILLIS);
+bool isMemoryDefaulted = true;
 uint16_t minuteColor;
-uint16_t secondColor;
-int brightness = 0;
-int buttonState = 0;
-int previousButtonState = 0;
-int numberOfSteps = 0;
-int stepIndex = 0;
-boolean performReset = false;
-uint32_t previousColor;
+Mode mode;
+int neopixelIndexHour;
+int neopixelIndexMinute;
+int neopixelIndexSecond;
 uint32_t newColor;
-uint8_t r;
-uint8_t g;
-uint8_t b;
-ClockMode clockMode;
-int notify_flash;
-int notify_duration;
-uint32_t notify_color;
-boolean up = true;
+uint16_t notificationColor = NOTIFICATION_FLASH_COLOR;
+double notificationFrequency = NOTIFICATION_FLASH_FREQUENCY_HZ;
+unsigned long notificationTimeout = NOTIFICATION_TIMEOUT_MS;
+Timer notificationTimer(MILLIS);
+uint32_t previousClockColors[NEOPIXEL_COUNT];
+uint32_t previousColor;
+unsigned long previousEpochTime;
+unsigned long previousSystemTime;
+uint8_t redPigment;
+bool savePreviousClockColors;
+uint16_t secondColor;
+unsigned long systemTime;
+StaticJsonDocument<500> webServerDoc;
+String webServerJson;
+String webServerMessage;
+
+//------------------------------------------------------------------------------------------------------------------------
 
 void setup() {
-  //Start the serial monitor
-  //Serial.begin(115200);
-
-  //Set the pin mode for the mode button
-  pinMode(BUTTON_PIN, INPUT);
-
-  //Start the NeoPixel service
-  strip.begin();
-
-  //Start the NTP time client service
-  timeClient.begin();
-  timeClient.forceUpdate();
-
-  //Start the EEPROM service
+  /* Start the serial monitor */
+  Serial.begin(115200);
+  /* Start the EEPROM service */
   EEPROM.begin(EEPROM_SIZE);
-    
-  //Do some initializing
-  boolean isMemoryDefaulted = true;
-  for (int i = 0; i < EEPROM_SIZE; i++) {
-    if (EEPROM.read(i) != 0xFF) {
-      isMemoryDefaulted = false;
-      break;
-    }
-  }
-  if (isMemoryDefaulted) {
-    initializeColors();
-  }
-  inDaylightSavingsTime = (EEPROM.read(6) == 0x01);
-  clockMode = NORMAL;
-  
-  //Set the colors for the hour, minute, and second pixels
-  hourColor = (EEPROM.read(0) << 8) | EEPROM.read(1);
-  minuteColor = (EEPROM.read(2) << 8) | EEPROM.read(3);
-  secondColor = (EEPROM.read(4) << 8) | EEPROM.read(5);
-
-  //Connect to Wi-Fi
+  setupEEPROM();
+  /* Start the NeoPixel service */
+  neopixels.begin();
+  neopixels.clear();
+  neopixels.show();
+  /* Start the Wi-Fi service */
+  WiFi.disconnect();
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    //ESP.restart();
-  }
-
-  //Trigger normal mode
-  server.on("/normal", [](){
-    server.send(200, "text/plain", "Normal mode initiated");
-    clockMode = NORMAL;
-  });
-
-  //Trigger program mode
-  server.on("/program", [](){
-    server.send(200, "text/plain", "Program mode initiated");
-    clockMode = PROGRAM;
-    numberOfSteps = 50;
-    stepIndex = 0;
-    up = true;
-  });
-
-  //Trigger equinox json sensors
-  server.on("/equinox", [](){
-    StaticJsonDocument<500> doc;
-    //readAmbientBrightness();
-
-    JsonArray illumValues = doc.createNestedArray("brightness");
-    illumValues.add(brightness);  
-
-    
-    // Write JSON document
-    String json;
-    serializeJsonPretty(doc, json);
-    server.send(200, "application/json", json);
-  });
-
-  //override mode with notify service
-  server.on("/notify", [](){
-    clockMode = NOTIFICATION;
-    //numberOfSteps = 50;
-    stepIndex = 0;
-    up = true;
-    String message = "Number of args received:";
-    message += server.args();            //Get number of parameters
-    message += "\n";                            //Add a new line
-    
-    for (int i = 0; i < server.args(); i++) {
-      if (server.argName(i)== "duration"){
-        notify_duration = millis() + server.arg(i).toInt();
-        
-      } else if (server.argName(i) ==  "flash"){
-        notify_flash = server.arg(i).toInt();
-      }
-      else if (server.argName(i) == "color"){        
-        notify_color = server.arg(i).toInt(); //32bit color
-      } 
-      message += "Arg n�" + (String)i + " �> ";   //Include the current iteration value
-      message += server.argName(i) + ": ";     //Get the name of the parameter
-      message += server.arg(i) + "\n";              //Get the value of the parameter
-    } 
-    server.send(200, "text/plain", message);       //Response to the HTTP request
-  });
-
-  
-
-  //Start the web server service
-  server.begin();
-
-  //Method to call when programming mode has started
-  ArduinoOTA.onStart([]() {
-    colorWipe(strip.Color(0, 0, 0));
-  });
-
-  //Method to call when programming mode has ended
-  ArduinoOTA.onEnd([]() {
-    readAmbientBrightness();
-    colorWipe(strip.Color(0, brightness, 0));
-  });
-
-  //Method to call while programming
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    for (int ledIndex = 0; ledIndex < LED_COUNT; ledIndex++) {
-      strip.setPixelColor(ledIndex, (ledIndex < map((progress / (total / 100)), 0, 100, 0, LED_COUNT)) ? strip.Color(30, 30, 30) : strip.Color(0, 0, 0));
-    }
-    strip.show();
-  });
-
-  //Method to call when an error occurs when programming
-  ArduinoOTA.onError([](ota_error_t error) {
-    readAmbientBrightness();
-    colorWipe(strip.Color(brightness, 0, 0));
-  });
-
-  //Start the over-the-air update service
-  ArduinoOTA.begin();
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  /* Start in initialize mode */
+  mode = INITIALIZE;
 }
 
-void loop() {  
-  //Monitor for any HTTP requests
-  server.handleClient();
-  
-  //Get the ambient brightness level and adjust the LED brightness
-  readAmbientBrightness();
-
-  //Monitor the mode button to change the clock's mode
-  buttonState = digitalRead(BUTTON_PIN);
-  if (buttonState != previousButtonState) {
-    if (buttonState == HIGH) {
-      switch (clockMode) {
-        case NORMAL:
-          clockMode = PROGRAM;
-          numberOfSteps = 50;
-          stepIndex = 0;
-          up = true;
-          break;
-        case PROGRAM:
-          clockMode = NORMAL;
-          break;
-      }
+void loop() {
+  /* Get the system time */
+  previousSystemTime = systemTime;
+  systemTime = millis();
+  /* Set the brightness level of the neopixels based on the ambient light */
+  brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(photocell.value(0, 255)));
+  /* Monitor for any HTTP requests */
+  webServer.handleClient();
+  /* Change the clock mode if the button was pressed */
+  if (button.wasPressed()) {
+    flashTimer.stop();
+    switch (mode) {
+      case NORMAL:
+        mode = PROGRAM;
+        break;
+      case PROGRAM:
+        mode = NORMAL;
+        break;
     }
-    delay(50);
   }
-  previousButtonState = buttonState;
-
-  //Switch between the various modes
-  switch (clockMode) {
+  /* Switch between the various modes */
+  switch (mode) {
+    case INITIALIZE:
+      initializeMode();
+      break;
     case NORMAL:
-    case INVERSE:
-      //Get the current time
-      currentTime = millis();
-
-      //Did the time change?
-      if (pureSeconds != timeClient.getSeconds()) {
-
-        //Save the color information in EEPROM and fetch time from server every hour
-        if (pureHours != (timeClient.getHours() + daylightSavingsTimeAdjustment())) {
-          timeClient.forceUpdate();
-          EEPROM.write(0, (hourColor & 0xFF00) >> 8);
-          EEPROM.write(1, (hourColor & 0xFF));
-          EEPROM.write(2, (minuteColor & 0xFF00) >> 8);
-          EEPROM.write(3, (minuteColor & 0xFF));
-          EEPROM.write(4, (secondColor & 0xFF00) >> 8);
-          EEPROM.write(5, (secondColor & 0xFF));
-          EEPROM.commit();  //This method takes ~150ms to complete, which hiccups the seconds light smoothness for just that second
-        }
-        
-        //Update local time variables
-        pureHours = timeClient.getHours() + daylightSavingsTimeAdjustment();
-        pureMinutes = timeClient.getMinutes();
-        pureSeconds = timeClient.getSeconds();
-        startTime = currentTime;
-    
-        //Change colors
-        hourColor = (hourColor + 1) & 0xFFFF;
-        minuteColor = (minuteColor + 1) & 0xFFFF;
-        secondColor = (secondColor + 1) & 0xFFFF;
-      }
-
-      //Set the fading index and number of fading steps
-      stepIndex = min((int)(currentTime - startTime), 999);
-      numberOfSteps = 1000 / numberOfPixlesPerMinute;
-
-      //Save the previous clock color information
-      if ((stepIndex % numberOfSteps) < (numberOfSteps / 2) && performReset) {
-        for (int i = 0; i < LED_COUNT; i++) {
-          clockPreviousColors[i] = clockColors[i];
-        }
-        performReset = false;
-      } else if ((stepIndex % numberOfSteps) > (numberOfSteps / 2) && !performReset) {
-        performReset = true;
-      }
-
-      //Get the location of the hours, minutes, and seconds
-      hours = ((pureHours % 12) * 5 * numberOfPixlesPerMinute) + (pureMinutes * numberOfPixlesPerMinute / 12);
-      minutes = (pureMinutes * numberOfPixlesPerMinute) + (pureSeconds * numberOfPixlesPerMinute / NUMBER_OF_MINUTES);
-      seconds = (pureSeconds * numberOfPixlesPerMinute) + (stepIndex / numberOfSteps);
-
-      //Reset the colors of the clock
-      for (int index = 0; index < LED_COUNT; index++) {
-        if (inInversionMode()) {
-          clockColors[index] = strip.ColorHSV(0x0000, 0x00, brightness);
-        } else {
-          clockColors[index] = strip.ColorHSV(0x0000, 0x00, 0x00);
-        }
-      }
-      
-      //Set the colors of the clock
-      setLedsColors(hours, NUMBER_OF_LEDS_PER_HOUR, hourColor);
-      setLedsColors(minutes, NUMBER_OF_LEDS_PER_MINUTE, minuteColor);
-      setLedsColors(seconds, NUMBER_OF_LEDS_PER_SECOND, secondColor);
-      
-      //Display the colors on the clock
-      for (int ledIndex = 0; ledIndex < LED_COUNT; ledIndex++) {
-        previousColor = clockPreviousColors[ledIndex];
-        newColor = clockColors[ledIndex];
-        r = interpolate(Red(previousColor), Red(newColor), stepIndex % numberOfSteps, numberOfSteps);
-        g = interpolate(Green(previousColor), Green(newColor), stepIndex % numberOfSteps, numberOfSteps);
-        b = interpolate(Blue(previousColor), Blue(newColor), stepIndex % numberOfSteps, numberOfSteps);
-        strip.setPixelColor(ledIndex, strip.Color(r, g, b));
-      }
-      strip.show();
+      clockMode();
       break;
     case PROGRAM:
-      //Display the colors on the clock
-      colorWipe(strip.Color(0, 0, map(stepIndex, 0, numberOfSteps, 0x00, brightness)));
-      delay(10);
-
-      //Increment or decrement the step index based on the fading direction
-      if (up) {
-        stepIndex++;
-      } else {
-        stepIndex--;
-      }
-
-      //Determine if it is time to change the fading direction
-      if (stepIndex == numberOfSteps) {
-        up = false;
-      } else if (stepIndex == 1) {
-        up = true;
-      }
-
-      //Handle incoming over-the-air updates
-      ArduinoOTA.handle();
+      programMode();
       break;
     case NOTIFICATION:
-      //Display the colors on the clock
-      if (notify_flash > 0){
-        colorWipe(strip.Color(map(stepIndex, 0, notify_flash, 0x00, Red(notify_color)), map(stepIndex, 0, notify_flash, 0x00, Green(notify_color)),map(stepIndex, 0, notify_flash, 0x00, Blue(notify_color))));
-      } else{
-        colorWipe(strip.Color(  Red(notify_color),  Green(notify_color),  Blue(notify_color)));
-      }
-      delay(10);
-
-      //Increment or decrement the step index based on the fading direction
-      if (up) {
-        stepIndex++;
-      } else {
-        stepIndex--;
-      }
-
-      //Determine if it is time to change the fading direction
-      if (stepIndex == notify_flash) {
-        up = false;
-      } else if (stepIndex == 1) {
-        up = true;
-      }
-
-      if (millis() >= notify_duration){
-        clockMode = NORMAL;
-      }
+      notificationMode();
       break;
   }
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+
 /**
- * Get the analog read from the photocell.
+ * Normal and inverse modes are the main modes of the program. The current time is fetched via Wi-Fi (if available) or 
+ * locally (if Wi-Fi connection was lost), and the clock's "hands" that display the time are represented with chunks 
+ * of NeoPixels. Daylight savings time is tracked and accounted for while operating. Occassionally, the colors of the 
+ * "hands" are stored to be restored in the event of a power cycle.
  */
-void readAmbientBrightness() {
-  brightness = max(10, (int)(pgm_read_byte(&gamma8[map(analogRead(PHOTOCELL_PIN), 0, 1024, 0, 255)])));
+void clockMode() {
+  /* Fetch the time from the NTP server */
+  timeClient.update();
+  previousEpochTime = epochTime;
+  epochTime = timeClient.getEpochTime() + daylightSavingsTime();
+  /* Save the color information of the hands every hour */
+  if (hour(epochTime) != hour(previousEpochTime)) {
+    EEPROM.write(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(hourColor));
+    EEPROM.write(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(hourColor));
+    EEPROM.write(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(minuteColor));
+    EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(minuteColor));
+    EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(secondColor));
+    EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(secondColor));
+    EEPROM.commit(); /* This takes ~150ms to complete, which hiccups the seconds light smoothness for just that second */
+  }
+  /* Change the clock hands' colors every second */
+  if (second(epochTime) != second(previousEpochTime)) {
+    hourColor = (hourColor + 1) & 0xFFFF;
+    minuteColor = (minuteColor + 1) & 0xFFFF;
+    secondColor = (secondColor + 1) & 0xFFFF;
+    currentTimeMilliseconds = 0;
+  /* Calculate the amount of milliseconds that have passed within the last second */
+  } else {
+    currentTimeMilliseconds = min((int)(currentTimeMilliseconds + systemTime - previousSystemTime), 999);
+  }
+  fadingIndex = currentTimeMilliseconds % NEOPIXEL_FADING_TIME_MS;
+  /* Save the previous clock colors if a fading sequence has completed */
+  if (fadingIndex < (NEOPIXEL_FADING_TIME_MS / 2) && savePreviousClockColors) {
+    for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
+      previousClockColors[neopixelIndex] = clockColors[neopixelIndex];
+    }
+    savePreviousClockColors = false;
+  } else if (fadingIndex > (NEOPIXEL_FADING_TIME_MS / 2) && !savePreviousClockColors) {
+    savePreviousClockColors = true;
+  }
+  /* Get the neopixel indexes of the hours, minutes, and seconds hands */
+  neopixelIndexHour = ((hour(epochTime) % 12) * 5 * NEOPIXEL_PER_MIN) + (minute(epochTime) * NEOPIXEL_PER_MIN / 12);
+  neopixelIndexMinute = (minute(epochTime) * NEOPIXEL_PER_MIN) + (second(epochTime) * NEOPIXEL_PER_MIN / MIN_PER_HOUR);
+  neopixelIndexSecond = (second(epochTime) * NEOPIXEL_PER_MIN) + (currentTimeMilliseconds / (MS_PER_SEC / NEOPIXEL_PER_MIN));
+  /* Prepare the clock's colors for new values */
+  for (int index = 0; index < NEOPIXEL_COUNT; index++) {
+    clockColors[index] = neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, NEOPIXEL_VALUE_OFF);
+  }
+  /* Set the colors of the clock */
+  setClockHandColors(neopixelIndexHour, HOUR_CHUNK_SIZE, hourColor);
+  setClockHandColors(neopixelIndexMinute, MINUTE_CHUNK_SIZE, minuteColor);
+  setClockHandColors(neopixelIndexSecond, SECOND_CHUNK_SIZE, secondColor);
+  /* Apply fading effect to the clock's hands and display the colors of the clock */
+  neopixels.clear();
+  for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
+    previousColor = previousClockColors[neopixelIndex];
+    newColor = clockColors[neopixelIndex];
+    redPigment = fade(red(previousColor), red(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
+    greenPigment = fade(green(previousColor), green(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
+    bluePigment = fade(blue(previousColor), blue(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
+    neopixels.setPixelColor(neopixelIndex, neopixels.Color(redPigment, greenPigment, bluePigment));
+  }
+  neopixels.show();
 }
 
 /**
- * Check if the clock is in inversion mode.
- * @return True if the clock is in inversion mode; False otherwise
+ * Initialize mode waits until a Wi-Fi connection has been established. If it cannot connect to Wi-Fi, an error color
+ * will flash indicating there was an error connecting to Wi-Fi, and the program will stall here until the next power
+ * cycle.
  */
-boolean inInversionMode() {
-  return (clockMode == INVERSE);
+void initializeMode() {
+  /* Start the initialization timer */
+  if ((initializationTimer.state() != RUNNING) && (initializationTimer.read() < INITIALIZATION_TIMEOUT_MS)) {
+    initializationTimer.start();
+  /* If initialization times out, stop attempting to connnect to Wi-Fi, and flash the error color */
+  } else if (initializationTimer.read() >= INITIALIZATION_TIMEOUT_MS) {
+    if (initializationTimer.state() != STOPPED) {
+      initializationTimer.stop();
+      WiFi.disconnect();
+    }
+    flash(INITIALIZATION_ERROR_FLASH_COLOR, INITIALIZATION_ERROR_FLASH_FREQUENCY_HZ);
+  /* Connection to Wi-Fi has been established, so continue with initialization, then to normal operations */
+  } else if (WiFi.status() == WL_CONNECTED) {
+    initializationTimer.stop();
+    timeClient.begin();
+    setupOtaUpdates();
+    setupWebServer();
+    mode = NORMAL;
+  /* Continue to wait until either a Wi-Fi connection has been established or the initialization times out */
+  } else {
+    delay(INITIALIZATION_DELAY_MS);
+  }
 }
 
 /**
- *
+ * Notification mode will flash a notification color at a frequency and duration specified by the HTTP request 
+ * received. After the duration has passed, normal operations will be resumed.
  */
-uint8_t interpolate(int previousValue, int newValue, int index, int steps) {
-  return (((previousValue * (steps - index)) + (newValue * index)) / steps) & 0xFF;
+void notificationMode() {
+  /* Start the notification timer */
+  if (notificationTimer.state() != RUNNING) {
+    notificationTimer.start();
+  /* Once the notification timer times out, return to normal operations */
+  } else if (notificationTimer.read() >= notificationTimeout) {
+    notificationTimer.stop();
+    mode = NORMAL;
+  /* The notification timer has not timed out yet, so continue flashing the notification color */
+  } else {
+    flash(notificationColor, notificationFrequency);
+  }
 }
 
 /**
+ * Program mode allows the board to be flashed with a new application via over-the-air updates. It will flash the 
+ * program color until either a new application has been flashed or program mode has been exited and normal mode has 
+ * been resumed via the "mode button" pressed by a user.
+ */
+void programMode() {
+  /* Flash the neopixels to indicate programming mode */
+  flash(PROGRAM_FLASH_COLOR, PROGRAM_FLASH_FREQUENCY_HZ);
+  /* Handle incoming over-the-air updates */
+  ArduinoOTA.handle();
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Get the 'Blue' component of a 32-bit color
+ */
+uint8_t blue(uint32_t color) {
+  return color & 0xFF;
+}
+
+/**
+ * Set all of the NeoPixels to one color.
  * 
+ * @param color   The color/hue to set.
  */
 void colorWipe(uint32_t color) {
-  for (int ledIndex = 0; ledIndex < LED_COUNT; ledIndex++) {
-    strip.setPixelColor(ledIndex, color);
+  neopixels.clear();
+  for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
+    neopixels.setPixelColor(neopixelIndex, color);
   }
-  strip.show();
+  neopixels.show();
 }
 
 /**
- * Set the LED color for the LED strip for a time unit.
+ * Return the amount of milliseconds to add to the current time if we are in daylight savings time.
  * 
- * @param timeValue The current time value for a time unit.
- * @param numberOfLeds The number of LEDs that represent the time unit.
- * @param color The color to represent the time unit on the clock.
+ * @return The amount of milliseconds to add for daylight savings time
  */
-void setLedsColors(int timeValue, int numberOfLeds, uint16_t color) {
-  //Variables
-  int ledIndex;
-  int leds[numberOfLeds];
-  
-  for (int offset = 0; offset < numberOfLeds; offset++) {
-    ledIndex = (-1 * numberOfLeds / 2) + offset + timeValue;
-    ledIndex += pixelOffset;
-    if (ledIndex < 0) {
-      ledIndex += LED_COUNT;
-    } else if (ledIndex >= LED_COUNT) {
-      ledIndex -= LED_COUNT;
-    }
-    if (inInversionMode()) {
-      clockColors[ledIndex] = strip.ColorHSV(0x0000, 0x00, 0x00);
-    } else if (clockColors[ledIndex] > 0) {
-      clockColors[ledIndex] = strip.ColorHSV(0x0000, 0x00, brightness); 
-    } else {
-      clockColors[ledIndex] = strip.ColorHSV(color, 0xFF, brightness); 
-    }
+unsigned long daylightSavingsTime() {
+  /* Daylight savings time starts on the second Sunday of March at 2am */
+  if ((month(epochTime) == 3) && 
+      (day(epochTime) >= 8) && (day(epochTime) <= 14) &&
+      (weekday(epochTime) == 1) &&
+      (hour(epochTime) == 2) &&
+      (!inDaylightSavingsTime)) {
+        inDaylightSavingsTime = true;
+        EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_ON);
   }
+  /* Daylight savings time ends on the first Sunday of November at 2am */
+  if ((month(epochTime) == 11) &&
+      (day(epochTime) >= 1) && (day(epochTime) <= 7) &&
+      (weekday(epochTime) == 1) &&
+      (hour(epochTime) == 2) &&
+      (inDaylightSavingsTime)) {
+        inDaylightSavingsTime = false;
+        EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_OFF);
+  }
+  return (inDaylightSavingsTime ? 1 : 0) * SECS_PER_HOUR * MS_PER_SEC;
 }
 
 /**
- * Get the 'Red' component of a 32-bit color
+ * Fade two colors into one.
+ * 
+ * @param previousColor   The previous color to fade from
+ * @param newColor        The new color to fade into
+ * @param index           The index at which to fade to the new color
+ * @param steps           The base which index is referenced
+ * @return                The newly faded color
  */
-uint8_t Red(uint32_t color) {
-  return (color >> 16) & 0xFF;
+uint8_t fade(int previousColor, int newColor, int index, int steps) {
+  return (((previousColor * (steps - index)) + (newColor * index)) / steps) & 0xFF;
+}
+
+/**
+ * Flash all of the NeoPixels in a sinusoidal pattern.
+ * 
+ * @param color       The color/hue to flash
+ * @param frequency   The rate at which to flash the NeoPixels
+ */
+void flash(uint16_t color, double frequency) {
+  /* Start the flash timer */
+  if ((flashTimer.state() != RUNNING) || (flashTimer.read() >= ((1.0 / frequency) * MS_PER_SEC))) {
+    flashTimer.start();
+  }
+  /* Set the color of all the NeoPixels */
+  colorWipe(neopixels.ColorHSV(color, NEOPIXEL_SATURATION_ON, mapf(sin(2 * M_PI * frequency * ((double)flashTimer.read() / MS_PER_SEC) - M_PI / 2), -1, 1, 0, 1) * brightness));
 }
 
 /**
  * Get the 'Green' component of a 32-bit color
  */
-uint8_t Green(uint32_t color) {
+uint8_t green(uint32_t color) {
   return (color >> 8) & 0xFF;
 }
 
 /**
- * Get the 'Blue' component of a 32-bit color
+ * Re-maps a 'double' number from one range to another.
+ * 
+ * @param x         The number to map
+ * @param in_min    The lower bound of the value's current range
+ * @param in_max    The higher bound of the value's current range
+ * @param out_min   The lower bound of the value's target range
+ * @param out_max   The lower bound of the value's target range
+ * @return          The mapped value
  */
-uint8_t Blue(uint32_t color) {
-  return color & 0xFF;
-}
-
-void initializeColors() {
-  EEPROM.write(0, 0x00);  //Set hours hue
-  EEPROM.write(1, 0x00);  //Set hours hue
-  EEPROM.write(2, 0x55);  //Set minutes hue
-  EEPROM.write(3, 0x55);  //Set minutes hue
-  EEPROM.write(4, 0xAA);  //Set seconds hue
-  EEPROM.write(5, 0xAA);  //Set seconds hue
-  EEPROM.write(6, 0x01);  //Set DST
-  EEPROM.commit();
-  hourColor = (EEPROM.read(0) << 8) | EEPROM.read(1);
-  minuteColor = (EEPROM.read(2) << 8) | EEPROM.read(3);
-  secondColor = (EEPROM.read(4) << 8) | EEPROM.read(5);
+double mapf(double x, double in_min, double in_max, double out_min, double out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
 /**
- * Adjust the time according to daylight savings time
+ * Get the 'Red' component of a 32-bit color
  */
-int daylightSavingsTimeAdjustment() {
-  //Variables
-  time_t date = timeClient.getEpochTime();
+uint8_t red(uint32_t color) {
+  return (color >> 16) & 0xFF;
+}
 
-  //Determine if date is in DST
-  if (month(date) == 3) {
-    if (day((date) >= 8) && (day(date) <= 14)) {
-      if (weekday(date) == 1) {
-        if (hour(date) == 2) {
-          if (!inDaylightSavingsTime) {
-            inDaylightSavingsTime = true;
-            EEPROM.write(6, 0x01);
-          }
-        }
-      } 
+/**
+ * Set the color and location of a clock hand.
+ * 
+ * @param index   The original index of where the hand is located
+ * @param size    The number of NeoPixels that represent the hand
+ * @param color   The color of the hand to display
+ */
+void setClockHandColors(int index, int size, uint16_t color) {
+  int neopixelIndex;
+  for (int offset = 0; offset < size; offset++) {
+    /* Calculate the neopixel index  */
+    neopixelIndex = (-1 * size / 2) + offset + index + NEOPIXEL_OFFSET;
+    if (neopixelIndex < 0) {
+      neopixelIndex += NEOPIXEL_COUNT;
+    } else if (neopixelIndex >= NEOPIXEL_COUNT) {
+      neopixelIndex -= NEOPIXEL_COUNT;
     }
-  } else if (month(date) == 11) {
-    if (day((date) >= 1) && (day(date) <= 7)) {
-      if (weekday(date) == 1) {
-        if (hour(date) == 2) {
-          if (inDaylightSavingsTime) {
-            inDaylightSavingsTime = false;
-            EEPROM.write(6, 0x00);
-          }
-        }
-      } 
+    /* Set the color of the neopixel */
+    if (clockColors[neopixelIndex] > 0) {
+      clockColors[neopixelIndex] = neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, brightness);
+    } else {
+      clockColors[neopixelIndex] = neopixels.ColorHSV(color, NEOPIXEL_SATURATION_ON, brightness);
     }
   }
-  return inDaylightSavingsTime ? 1 : 0;
+}
+
+/**
+ * Verify the EEPROM is not defaulted before beginning normal operations and load the hand colors and DST information from
+ * EEPROM.
+ */
+void setupEEPROM() {
+  /* Check if EEPROM has been defaulted */
+  for (int eepromAddress = 0x00; eepromAddress < EEPROM_SIZE; eepromAddress++) {
+    if (EEPROM.read(eepromAddress) != EEPROM_DEFAULT) {
+      isMemoryDefaulted = false;
+      break;
+    }
+  }
+  /* Write default values to EEPROM if it was defaulted */
+  if (isMemoryDefaulted) {
+    EEPROM.write(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(HOUR_COLOR_DEFAULT));
+    EEPROM.write(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(HOUR_COLOR_DEFAULT));
+    EEPROM.write(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(MINUTE_COLOR_DEFAULT));
+    EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(MINUTE_COLOR_DEFAULT));
+    EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(SECOND_COLOR_DEFAULT));
+    EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(SECOND_COLOR_DEFAULT));
+    EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_OFF);
+    EEPROM.commit();
+  }
+  /* Load hand colors and DST information from EEPROM */
+  hourColor = (EEPROM.read(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS);
+  minuteColor = (EEPROM.read(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS);
+  secondColor = (EEPROM.read(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS);
+  inDaylightSavingsTime = (EEPROM.read(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS) == DAYLIGHT_SAVINGS_TIME_ON);
+}
+
+/**
+ * After connecting to Wi-Fi, set up over-the-air updates to reflash the application over Wi-Fi rather than through
+ * the USB cable.
+ */
+void setupOtaUpdates() {
+  /* Method to call when programming mode has started */
+  ArduinoOTA.onStart([]() {
+    colorWipe(neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, NEOPIXEL_VALUE_OFF));
+  });
+  /* Method to call when programming mode has ended */
+  ArduinoOTA.onEnd([]() {
+    colorWipe(neopixels.ColorHSV(PROGRAM_END_COLOR, NEOPIXEL_SATURATION_ON, brightness));
+  });
+  /* Method to call while programming */
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    neopixels.clear();
+    for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
+      if (neopixelIndex < map(progress, 0, total, 0, NEOPIXEL_COUNT)) {
+        neopixels.setPixelColor(neopixelIndex, neopixels.ColorHSV(PROGRAM_PROGRESS_COLOR, NEOPIXEL_SATURATION_ON, brightness));
+      } else {
+        neopixels.setPixelColor(neopixelIndex, neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, NEOPIXEL_VALUE_OFF));
+      }
+    }
+    neopixels.show();
+  });
+  /* Method to call when an error occurs when programming */
+  ArduinoOTA.onError([](ota_error_t error) {
+    colorWipe(neopixels.ColorHSV(PROGRAM_ERROR_COLOR, NEOPIXEL_SATURATION_ON, brightness));
+  });
+  /* Start the OTA updates service */
+  ArduinoOTA.begin();
+}
+
+/**
+ * After connecting to Wi-Fi, set up the web server to receive HTTP requests for tasks.
+ */
+void setupWebServer() {
+  /* Return the ambient brightness when requested */
+  webServer.on("/equinox", [](){
+    webServerJson = "";
+    webServerDoc["brightness"] = brightness;
+    serializeJsonPretty(webServerDoc, webServerJson);
+    webServer.send(200, "application/json", webServerJson);
+  });
+  /* Begin normal operations when requested */
+  webServer.on("/normal", [](){
+    mode = NORMAL;
+    webServerMessage = "Normal mode initiated";
+    webServer.send(200, "text/plain", webServerMessage);
+  });
+  /* Begin notification mode when requested with some customization to the flashing and timing parameters */
+  webServer.on("/notify", [](){
+    mode = NOTIFICATION;
+    notificationTimer.stop();
+    webServerMessage = "Number of args received:";
+    webServerMessage += webServer.args();
+    webServerMessage += "\n";
+    for (int argsIndex = 0; argsIndex < webServer.args(); argsIndex++) {
+      if (webServer.argName(argsIndex) == "color") {
+        notificationColor = webServer.arg(argsIndex).toInt();
+      } else if (webServer.argName(argsIndex) == "duration") {
+        notificationTimeout = webServer.arg(argsIndex).toInt();
+      } else if (webServer.argName(argsIndex) == "flash") {
+        notificationFrequency = webServer.arg(argsIndex).toInt();
+      }
+      webServerMessage += "Arg n�" + (String)argsIndex + " �> ";
+      webServerMessage += webServer.argName(argsIndex) + ": ";
+      webServerMessage += webServer.arg(argsIndex) + "\n";
+    }
+    webServer.send(200, "text/plain", webServerMessage);
+  });
+  /* Begin programming mode when requested */
+  webServer.on("/program", [](){
+    mode = PROGRAM;
+    webServerMessage = "Program mode initiated";
+    webServer.send(200, "text/plain", webServerMessage);
+  });
+  /* Start the web server service */
+  webServer.begin();
 }
