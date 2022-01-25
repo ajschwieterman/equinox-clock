@@ -15,6 +15,7 @@
 #define DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS      0x06
 #define DAYLIGHT_SAVINGS_TIME_OFF                 0x00
 #define DAYLIGHT_SAVINGS_TIME_ON                  0x01
+#define DEBOUNCE_INTERVAL                         50
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               7
 #define HOUR_CHUNK_SIZE                           8
@@ -263,6 +264,8 @@ void initializeMode() {
   /* Connection to Wi-Fi has been established, so continue with initialization, then to normal operations */
   } else if (WiFi.status() == WL_CONNECTED) {
     initializationTimer.stop();
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
     timeClient.begin();
     setupOtaUpdates();
     setupWebServer();
