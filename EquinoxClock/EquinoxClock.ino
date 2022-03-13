@@ -59,6 +59,7 @@
 #define SECOND_COLOR_DEFAULT                      NEOPIXEL_COLOR_BLUE
 #define SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS     0x04
 #define SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS      0x05
+#define SERIAL_MONITOR_BAUD_RATE                  115200
 #define UTC_POOL_SERVER_NAME                      "pool.ntp.org"
 #define UTC_TIME_OFFSET_SECONDS                   -18000  /* For UTC -5.00 : -5 * 60 * 60 */
 #define UTC_UPDATE_INTERVAL_MS                    ((time_t)(SECS_PER_DAY * MS_PER_SEC))
@@ -124,9 +125,8 @@ String webServerMessage;
 
 void setup() {
   /* Start the serial monitor */
-  Serial.begin(115200);
+  // Serial.begin(SERIAL_MONITOR_BAUD_RATE);
   /* Start the EEPROM service */
-  EEPROM.begin(EEPROM_SIZE);
   setupEEPROM();
   /* Start the NeoPixel service */
   neopixels.begin();
@@ -329,9 +329,9 @@ void colorWipe(uint32_t color) {
 }
 
 /**
- * Return the amount of milliseconds to add to the current time if we are in daylight savings time.
+ * Return the amount of seconds to add to the current time if we are in daylight savings time.
  * 
- * @return The amount of milliseconds to add for daylight savings time
+ * @return The amount of seconds to add for daylight savings time
  */
 unsigned long daylightSavingsTime() {
   /* Daylight savings time starts on the second Sunday of March at 2am */
@@ -342,6 +342,7 @@ unsigned long daylightSavingsTime() {
       (!inDaylightSavingsTime)) {
         inDaylightSavingsTime = true;
         EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_ON);
+        EEPROM.commit();
   }
   /* Daylight savings time ends on the first Sunday of November at 2am */
   if ((month(epochTime) == 11) &&
@@ -351,8 +352,9 @@ unsigned long daylightSavingsTime() {
       (inDaylightSavingsTime)) {
         inDaylightSavingsTime = false;
         EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_OFF);
+        EEPROM.commit();
   }
-  return (inDaylightSavingsTime ? 1 : 0) * SECS_PER_HOUR * MS_PER_SEC;
+  return (inDaylightSavingsTime ? SECS_PER_HOUR : 0);
 }
 
 /**
@@ -442,6 +444,8 @@ void setClockHandColors(int index, int size, uint16_t color) {
  * EEPROM.
  */
 void setupEEPROM() {
+  /* Start the EEPROM service */
+  EEPROM.begin(EEPROM_SIZE);
   /* Check if EEPROM has been defaulted */
   for (int eepromAddress = 0x00; eepromAddress < EEPROM_SIZE; eepromAddress++) {
     if (EEPROM.read(eepromAddress) != EEPROM_DEFAULT) {
@@ -457,7 +461,7 @@ void setupEEPROM() {
     EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(MINUTE_COLOR_DEFAULT));
     EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(SECOND_COLOR_DEFAULT));
     EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(SECOND_COLOR_DEFAULT));
-    EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_OFF);
+    EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_ON);
     EEPROM.commit();
   }
   /* Load hand colors and DST information from EEPROM */
