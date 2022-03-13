@@ -12,12 +12,13 @@
 #include <WiFiUdp.h>
 
 #define BUTTON_PIN                                12
+#define CHECKSUM_EEPROM_ADDRESS                   0x07
 #define DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS      0x06
 #define DAYLIGHT_SAVINGS_TIME_OFF                 0x00
 #define DAYLIGHT_SAVINGS_TIME_ON                  0x01
 #define DEBOUNCE_INTERVAL                         50
 #define EEPROM_DEFAULT                            0xFF
-#define EEPROM_SIZE                               7
+#define EEPROM_SIZE                               8
 #define HOUR_CHUNK_SIZE                           8
 #define HOUR_COLOR_DEFAULT                        NEOPIXEL_COLOR_RED
 #define HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS       0x00
@@ -98,7 +99,6 @@ uint8_t greenPigment;
 uint16_t hourColor;
 bool inDaylightSavingsTime;
 Timer initializationTimer(MILLIS);
-bool isMemoryDefaulted = true;
 uint16_t minuteColor;
 Mode mode;
 int neopixelIndexHour;
@@ -192,13 +192,7 @@ void clockMode() {
   epochTime = timeClient.getEpochTime() + daylightSavingsTime();
   /* Save the color information of the hands every hour */
   if (hour(epochTime) != hour(previousEpochTime)) {
-    EEPROM.write(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(hourColor));
-    EEPROM.write(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(hourColor));
-    EEPROM.write(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(minuteColor));
-    EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(minuteColor));
-    EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(secondColor));
-    EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(secondColor));
-    EEPROM.commit(); /* This takes ~150ms to complete, which hiccups the seconds light smoothness for just that second */
+    writeEEPROM();
   }
   /* Change the clock hands' colors every second */
   if (second(epochTime) != second(previousEpochTime)) {
@@ -316,6 +310,21 @@ uint8_t blue(uint32_t color) {
 }
 
 /**
+ * Calculate the expected checksum value based on the configuration values stored in EEPROM.
+ * 
+ * @return The calculated checksum of EEPROM
+ */
+uint8_t calculateChecksum() {
+  uint8_t checksum = 0x00;
+  for (int eepromAddress = 0x00; eepromAddress < EEPROM_SIZE; eepromAddress++) {
+    if (eepromAddress != CHECKSUM_EEPROM_ADDRESS) {
+      checksum += EEPROM.read(eepromAddress);
+    }
+  }
+  return checksum;
+}
+
+/**
  * Set all of the NeoPixels to one color.
  * 
  * @param color   The color/hue to set.
@@ -341,8 +350,7 @@ unsigned long daylightSavingsTime() {
       (hour(epochTime) == 2) &&
       (!inDaylightSavingsTime)) {
         inDaylightSavingsTime = true;
-        EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_ON);
-        EEPROM.commit();
+        writeEEPROM();
   }
   /* Daylight savings time ends on the first Sunday of November at 2am */
   if ((month(epochTime) == 11) &&
@@ -351,8 +359,7 @@ unsigned long daylightSavingsTime() {
       (hour(epochTime) == 2) &&
       (inDaylightSavingsTime)) {
         inDaylightSavingsTime = false;
-        EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_OFF);
-        EEPROM.commit();
+        writeEEPROM();
   }
   return (inDaylightSavingsTime ? SECS_PER_HOUR : 0);
 }
@@ -446,29 +453,20 @@ void setClockHandColors(int index, int size, uint16_t color) {
 void setupEEPROM() {
   /* Start the EEPROM service */
   EEPROM.begin(EEPROM_SIZE);
-  /* Check if EEPROM has been defaulted */
-  for (int eepromAddress = 0x00; eepromAddress < EEPROM_SIZE; eepromAddress++) {
-    if (EEPROM.read(eepromAddress) != EEPROM_DEFAULT) {
-      isMemoryDefaulted = false;
-      break;
-    }
+  /* Write default values to EEPROM if the data is not valid */
+  if (EEPROM.read(CHECKSUM_EEPROM_ADDRESS) != calculateChecksum()) {
+    hourColor = HOUR_COLOR_DEFAULT;
+    minuteColor = MINUTE_COLOR_DEFAULT;
+    secondColor = SECOND_COLOR_DEFAULT;
+    inDaylightSavingsTime = true;
+    writeEEPROM();
+  /* Load hand colors and DST information from EEPROM if the data is valid */
+  } else {
+    hourColor = (EEPROM.read(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS);
+    minuteColor = (EEPROM.read(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS);
+    secondColor = (EEPROM.read(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS);
+    inDaylightSavingsTime = (EEPROM.read(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS) == DAYLIGHT_SAVINGS_TIME_ON);
   }
-  /* Write default values to EEPROM if it was defaulted */
-  if (isMemoryDefaulted) {
-    EEPROM.write(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(HOUR_COLOR_DEFAULT));
-    EEPROM.write(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(HOUR_COLOR_DEFAULT));
-    EEPROM.write(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(MINUTE_COLOR_DEFAULT));
-    EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(MINUTE_COLOR_DEFAULT));
-    EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(SECOND_COLOR_DEFAULT));
-    EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(SECOND_COLOR_DEFAULT));
-    EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, DAYLIGHT_SAVINGS_TIME_ON);
-    EEPROM.commit();
-  }
-  /* Load hand colors and DST information from EEPROM */
-  hourColor = (EEPROM.read(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS);
-  minuteColor = (EEPROM.read(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS);
-  secondColor = (EEPROM.read(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS);
-  inDaylightSavingsTime = (EEPROM.read(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS) == DAYLIGHT_SAVINGS_TIME_ON);
 }
 
 /**
@@ -550,4 +548,22 @@ void setupWebServer() {
   });
   /* Start the web server service */
   webServer.begin();
+}
+
+/**
+ * Write the configuration values to EEPROM along with the checksum to validate the data upon the next initialization.
+ */
+void writeEEPROM() {
+  /* Write all confiugration values to EEPROM */
+  EEPROM.write(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(hourColor));
+  EEPROM.write(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(hourColor));
+  EEPROM.write(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(minuteColor));
+  EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(minuteColor));
+  EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(secondColor));
+  EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(secondColor));
+  EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, inDaylightSavingsTime ? DAYLIGHT_SAVINGS_TIME_ON : DAYLIGHT_SAVINGS_TIME_OFF);
+  EEPROM.commit();
+  /* Write the checksum value of the configuration values to EEPROM */
+  EEPROM.write(CHECKSUM_EEPROM_ADDRESS, calculateChecksum());
+  EEPROM.commit();
 }
