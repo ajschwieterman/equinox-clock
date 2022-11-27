@@ -149,7 +149,9 @@ void loop() {
   /* Set the brightness level of the neopixels based on the ambient light */
   brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(photocell.value(0, 255)));
   /* Monitor for any HTTP requests */
-  webServer.handleClient();
+  if (mode != INITIALIZE) {
+    webServer.handleClient();
+  }
   /* Change the clock mode if the button was pressed */
   if (button.wasPressed()) {
     flashTimer.stop();
