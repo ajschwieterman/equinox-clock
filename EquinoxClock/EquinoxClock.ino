@@ -154,7 +154,6 @@ void loop() {
   }
   /* Change the clock mode if the button was pressed */
   if (button.wasPressed()) {
-    flashTimer.stop();
     switch (mode) {
       case NORMAL:
         mode = PROGRAM;
@@ -166,16 +165,18 @@ void loop() {
   }
   /* Perform any setup and cleanup actions when the mode changes */
   if (mode != previousMode) {
+    switch (previousMode) {
+      case INITIALIZE:
+      case NOTIFICATION:
+      case PROGRAM:
+        flashTimer.stop();
+        break;
+    }
     switch (mode) {
       case PROGRAM:
         ArduinoOTA.begin();
         break;
     }
-    // switch (previousMode) {
-    //   case PROGRAM:
-    //     ArduinoOTA.end();
-    //     break;
-    // }
     previousMode = mode;
   }
   /* Switch between the various modes */
