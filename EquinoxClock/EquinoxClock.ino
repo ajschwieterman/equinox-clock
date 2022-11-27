@@ -112,6 +112,7 @@ Timer notificationTimer(MILLIS);
 uint32_t previousClockColors[NEOPIXEL_COUNT];
 uint32_t previousColor;
 unsigned long previousEpochTime;
+Mode previousMode;
 unsigned long previousSystemTime;
 uint8_t redPigment;
 bool savePreviousClockColors;
@@ -138,6 +139,7 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   /* Start in initialize mode */
   mode = INITIALIZE;
+  previousMode = INITIALIZE;
 }
 
 void loop() {
@@ -159,6 +161,20 @@ void loop() {
         mode = NORMAL;
         break;
     }
+  }
+  /* Perform any setup and cleanup actions when the mode changes */
+  if (mode != previousMode) {
+    switch (mode) {
+      case PROGRAM:
+        ArduinoOTA.begin();
+        break;
+    }
+    // switch (previousMode) {
+    //   case PROGRAM:
+    //     ArduinoOTA.end();
+    //     break;
+    // }
+    previousMode = mode;
   }
   /* Switch between the various modes */
   switch (mode) {
@@ -498,8 +514,6 @@ void setupOtaUpdates() {
   ArduinoOTA.onError([](ota_error_t error) {
     colorWipe(neopixels.ColorHSV(PROGRAM_ERROR_COLOR, NEOPIXEL_SATURATION_ON, brightness));
   });
-  /* Start the OTA updates service */
-  ArduinoOTA.begin();
 }
 
 /**
