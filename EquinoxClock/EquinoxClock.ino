@@ -13,17 +13,18 @@
 #include <WiFiUdp.h>
 
 #define BUTTON_PIN                                12
-#define CHECKSUM_EEPROM_ADDRESS                   0x07
-#define DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS      0x06
+#define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x07
+#define DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS      EEPROM_BASE_ADDRESS + 0x06
 #define DAYLIGHT_SAVINGS_TIME_OFF                 0x00
 #define DAYLIGHT_SAVINGS_TIME_ON                  0x01
 #define DEBOUNCE_INTERVAL                         50
+#define EEPROM_BASE_ADDRESS                       1408
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               8
 #define HOUR_CHUNK_SIZE                           8
 #define HOUR_COLOR_DEFAULT                        NEOPIXEL_COLOR_RED
-#define HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS       0x00
-#define HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS        0x01
+#define HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS       EEPROM_BASE_ADDRESS + 0x00
+#define HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS        EEPROM_BASE_ADDRESS + 0x01
 #define INITIALIZATION_DELAY_MS                   500
 #define INITIALIZATION_ERROR_FLASH_COLOR          NEOPIXEL_COLOR_RED
 #define INITIALIZATION_ERROR_FLASH_FREQUENCY_HZ   0.5
@@ -31,8 +32,8 @@
 #define MIN_PER_HOUR                              ((time_t)(SECS_PER_HOUR / SECS_PER_MIN))
 #define MINUTE_CHUNK_SIZE                         4
 #define MINUTE_COLOR_DEFAULT                      NEOPIXEL_COLOR_GREEN
-#define MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS     0x02
-#define MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS      0x03
+#define MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS     EEPROM_BASE_ADDRESS + 0x02
+#define MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS      EEPROM_BASE_ADDRESS + 0x03
 #define MS_PER_SEC                                1000
 #define NEOPIXEL_COLOR_BLUE                       0xAAAA
 #define NEOPIXEL_COLOR_GREEN                      0x5555
@@ -59,8 +60,8 @@
 #define PROGRAM_PROGRESS_COLOR                    NEOPIXEL_COLOR_ORANGE
 #define SECOND_CHUNK_SIZE                         2
 #define SECOND_COLOR_DEFAULT                      NEOPIXEL_COLOR_BLUE
-#define SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS     0x04
-#define SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS      0x05
+#define SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS     EEPROM_BASE_ADDRESS + 0x04
+#define SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS      EEPROM_BASE_ADDRESS + 0x05
 #define SERIAL_MONITOR_BAUD_RATE                  115200
 #define UTC_POOL_SERVER_NAME                      "pool.ntp.org"
 #define UTC_TIME_OFFSET_SECONDS                   -18000  /* For UTC -5.00 : -5 * 60 * 60 */
@@ -131,7 +132,7 @@ String webServerMessage;
 
 void setup() {
   /* Start the serial monitor */
-  // Serial.begin(SERIAL_MONITOR_BAUD_RATE);
+  Serial.begin(SERIAL_MONITOR_BAUD_RATE);
   /* Start the EEPROM service */
   setupEEPROM();
   /* Start the NeoPixel service */
@@ -140,7 +141,9 @@ void setup() {
   neopixels.show();
   /* Start the Wi-Fi service */
   WiFi.disconnect();
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   /* Start in initialize mode */
   mode = INITIALIZE;
@@ -153,9 +156,8 @@ void loop() {
   systemTime = millis();
   /* Set the brightness level of the neopixels based on the ambient light */
   brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(photocell.value(0, 255)));
-  /* Monitor for any HTTP requests and HomeKit changes */
+  /* Monitor for any HTTP requests */
   if (mode != INITIALIZE) {
-    arduino_homekit_loop();
     webServer.handleClient();
   }
   /* Change the clock mode if the button was pressed */
@@ -211,6 +213,8 @@ void loop() {
  * "hands" are stored to be restored in the event of a power cycle.
  */
 void clockMode() {
+  /* Monitor any changes from HomeKit */
+  arduino_homekit_loop();
   /* Fetch the time from the NTP server */
   timeClient.update();
   previousEpochTime = epochTime;
@@ -346,7 +350,7 @@ uint8_t calculateChecksum() {
   uint8_t checksum = 0x00;
   for (int eepromAddress = 0x00; eepromAddress < EEPROM_SIZE; eepromAddress++) {
     if (eepromAddress != CHECKSUM_EEPROM_ADDRESS) {
-      checksum += EEPROM.read(eepromAddress);
+      checksum += EEPROM.read(EEPROM_BASE_ADDRESS + eepromAddress);
     }
   }
   return checksum;
@@ -489,7 +493,7 @@ void setClockHandColors(int index, int size, uint16_t color) {
  */
 void setupEEPROM() {
   /* Start the EEPROM service */
-  EEPROM.begin(EEPROM_SIZE);
+  EEPROM.begin(EEPROM_BASE_ADDRESS + EEPROM_SIZE);
   /* Write default values to EEPROM if the data is not valid */
   if (EEPROM.read(CHECKSUM_EEPROM_ADDRESS) != calculateChecksum()) {
     hourColor = HOUR_COLOR_DEFAULT;
@@ -511,6 +515,7 @@ void setupEEPROM() {
  * the on/off state of the clock (only in NORMAL mode).
  */
 void setupHomeKit() {
+  //homekit_storage_reset();
   /* Call a function to change the on/off state of the clock when HomeKit updates */
   homekitOnOffCharacteristic.setter = changeClockOnOffState;
   /* Configure and start the HomeKit service */
@@ -590,12 +595,6 @@ void setupWebServer() {
   webServer.on("/program", [](){
     mode = PROGRAM;
     webServerMessage = "Program mode initiated";
-    webServer.send(200, "text/plain", webServerMessage);
-  });
-  /* Reset the HomeKit pairing when requested */
-  webServer.on("/reset", [](){
-    homekit_storage_reset();
-    webServerMessage = "HomeKit pairing reset";
     webServer.send(200, "text/plain", webServerMessage);
   });
   /* Start the web server service */
