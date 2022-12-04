@@ -17,16 +17,18 @@ Below is the circuit diagram for the buttons, light sensor, and NeoPixels.
 ![Main](https://github.com/ajschwieterman/equinox-clock/blob/master/schematic.png)
 
 # Required board libraries
-Follow [these instructions](https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/using-arduino-ide) to install the Adafruit board libraries
-
-- esp8266 v3.0.2
+- [esp8266](https://github.com/esp8266/Arduino) v3.0.2
   - Adafruit Feather HUZZAH ESP8266
 
+Use the following instructions to install the Adafruit board libraries and configure the ESP8266 hardware.
+- [Board Libraries Installation](https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/using-arduino-ide)
+- [Hardware Configuration](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266#recommended-settings-in-ide)
+
 # Required Arduino libraries
-- Adafruit NeoPixel v1.10.7
-- ArduinoJson v6.19.4
-- BobaBlox v2.0.1
-- HomeKit-ESP8266 v1.2.0
-- NTPClient v3.2.1
-- Time v1.6.1
-- Timer v1.2.1
+- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.10.7
+- [ArduinoJson](https://github.com/bblanchon/ArduinoJson) v6.19.4
+- [BobaBlox](https://github.com/robertgallup/BobaBlox) v2.0.1
+- [HomeKit-ESP8266](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266) v1.2.0
+- [NTPClient](https://github.com/arduino-libraries/NTPClient) v3.2.1
+- [Time](https://playground.arduino.cc/Code/Time/) v1.6.1
+- [Timer](https://github.com/sstaub/Timer) v1.2.1
