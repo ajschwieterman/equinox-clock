@@ -132,7 +132,7 @@ String webServerMessage;
 
 void setup() {
   /* Start the serial monitor */
-  Serial.begin(SERIAL_MONITOR_BAUD_RATE);
+  // Serial.begin(SERIAL_MONITOR_BAUD_RATE);
   /* Start the EEPROM service */
   setupEEPROM();
   /* Start the NeoPixel service */
@@ -515,7 +515,7 @@ void setupEEPROM() {
  * the on/off state of the clock (only in NORMAL mode).
  */
 void setupHomeKit() {
-  //homekit_storage_reset();
+  // homekit_storage_reset();
   /* Call a function to change the on/off state of the clock when HomeKit updates */
   homekitOnOffCharacteristic.setter = changeClockOnOffState;
   /* Configure and start the HomeKit service */
