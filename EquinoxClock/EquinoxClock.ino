@@ -1,5 +1,6 @@
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
+#include <arduino_homekit_server.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <BobaBlox.h>
@@ -79,6 +80,10 @@ Photocell photocell(PHOTOCELL_PIN);
 NTPClient timeClient(ntpUDP, UTC_POOL_SERVER_NAME, UTC_TIME_OFFSET_SECONDS, UTC_UPDATE_INTERVAL_MS);
 ESP8266WebServer webServer;
 
+/* Define HomeKit configuration */
+extern "C" homekit_server_config_t homekitConfiguration;
+extern "C" homekit_characteristic_t homekitOnOffCharacteristic;
+
 /* Define modes */
 enum Mode {
   INITIALIZE,
@@ -148,8 +153,9 @@ void loop() {
   systemTime = millis();
   /* Set the brightness level of the neopixels based on the ambient light */
   brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(photocell.value(0, 255)));
-  /* Monitor for any HTTP requests */
+  /* Monitor for any HTTP requests and HomeKit changes */
   if (mode != INITIALIZE) {
+    arduino_homekit_loop();
     webServer.handleClient();
   }
   /* Change the clock mode if the button was pressed */
@@ -247,13 +253,15 @@ void clockMode() {
   setClockHandColors(neopixelIndexSecond, SECOND_CHUNK_SIZE, secondColor);
   /* Apply fading effect to the clock's hands and display the colors of the clock */
   neopixels.clear();
-  for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
-    previousColor = previousClockColors[neopixelIndex];
-    newColor = clockColors[neopixelIndex];
-    redPigment = fade(red(previousColor), red(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
-    greenPigment = fade(green(previousColor), green(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
-    bluePigment = fade(blue(previousColor), blue(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
-    neopixels.setPixelColor(neopixelIndex, neopixels.Color(redPigment, greenPigment, bluePigment));
+  if(homekitOnOffCharacteristic.value.bool_value) {
+    for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
+      previousColor = previousClockColors[neopixelIndex];
+      newColor = clockColors[neopixelIndex];
+      redPigment = fade(red(previousColor), red(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
+      greenPigment = fade(green(previousColor), green(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
+      bluePigment = fade(blue(previousColor), blue(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
+      neopixels.setPixelColor(neopixelIndex, neopixels.Color(redPigment, greenPigment, bluePigment));
+    }
   }
   neopixels.show();
 }
@@ -280,6 +288,7 @@ void initializeMode() {
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
     timeClient.begin();
+    setupHomeKit();
     setupOtaUpdates();
     setupWebServer();
     mode = NORMAL;
@@ -341,6 +350,15 @@ uint8_t calculateChecksum() {
     }
   }
   return checksum;
+}
+
+/**
+ * Change the on/off state of the clock via HomeKit.
+ * 
+ * @param value True to turn the clock on; False to turn the clock off
+ */
+void changeClockOnOffState(const homekit_value_t value) {
+	homekitOnOffCharacteristic.value.bool_value = value.bool_value;
 }
 
 /**
@@ -477,7 +495,7 @@ void setupEEPROM() {
     hourColor = HOUR_COLOR_DEFAULT;
     minuteColor = MINUTE_COLOR_DEFAULT;
     secondColor = SECOND_COLOR_DEFAULT;
-    inDaylightSavingsTime = true;
+    inDaylightSavingsTime = false;
     writeEEPROM();
   /* Load hand colors and DST information from EEPROM if the data is valid */
   } else {
@@ -486,6 +504,17 @@ void setupEEPROM() {
     secondColor = (EEPROM.read(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS);
     inDaylightSavingsTime = (EEPROM.read(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS) == DAYLIGHT_SAVINGS_TIME_ON);
   }
+}
+
+/**
+ * After connecting to Wi-Fi, setup the HomeKit server to add this accessory in the Home app of iOS and control 
+ * the on/off state of the clock (only in NORMAL mode).
+ */
+void setupHomeKit() {
+  /* Call a function to change the on/off state of the clock when HomeKit updates */
+  homekitOnOffCharacteristic.setter = changeClockOnOffState;
+  /* Configure and start the HomeKit service */
+  arduino_homekit_setup(&homekitConfiguration);
 }
 
 /**
@@ -561,6 +590,12 @@ void setupWebServer() {
   webServer.on("/program", [](){
     mode = PROGRAM;
     webServerMessage = "Program mode initiated";
+    webServer.send(200, "text/plain", webServerMessage);
+  });
+  /* Reset the HomeKit pairing when requested */
+  webServer.on("/reset", [](){
+    homekit_storage_reset();
+    webServerMessage = "HomeKit pairing reset";
     webServer.send(200, "text/plain", webServerMessage);
   });
   /* Start the web server service */

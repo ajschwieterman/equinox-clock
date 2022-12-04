@@ -26,6 +26,7 @@ Follow [these instructions](https://learn.adafruit.com/adafruit-feather-huzzah-e
 - Adafruit NeoPixel v1.10.7
 - ArduinoJson v6.19.4
 - BobaBlox v2.0.1
+- HomeKit-ESP8266 v1.2.0
 - NTPClient v3.2.1
 - Time v1.6.1
 - Timer v1.2.1
