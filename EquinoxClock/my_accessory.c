@@ -4,7 +4,7 @@
 homekit_characteristic_t homekitOnOffCharacteristic = HOMEKIT_CHARACTERISTIC_(ON, true);
 
 homekit_accessory_t * homekitAccessories[] = {
-  HOMEKIT_ACCESSORY(.id=1, .category = homekit_accessory_category_switch, .services = (homekit_service_t*[]) {
+  HOMEKIT_ACCESSORY(.id = 1, .category = homekit_accessory_category_lightbulb, .services = (homekit_service_t*[]) {
     HOMEKIT_SERVICE(ACCESSORY_INFORMATION, .characteristics = (homekit_characteristic_t*[]) {
       HOMEKIT_CHARACTERISTIC(NAME, "Equinox Clock"),
       HOMEKIT_CHARACTERISTIC(MANUFACTURER, "Arduino HomeKit"),
@@ -14,7 +14,7 @@ homekit_accessory_t * homekitAccessories[] = {
       HOMEKIT_CHARACTERISTIC(IDENTIFY, NULL),
       NULL
     }),
-    HOMEKIT_SERVICE(SWITCH, .primary = true, .characteristics = (homekit_characteristic_t*[]) {
+    HOMEKIT_SERVICE(LIGHTBULB, .primary = true, .characteristics = (homekit_characteristic_t*[]) {
       &homekitOnOffCharacteristic,
       HOMEKIT_CHARACTERISTIC(NAME, "Lights"),
       NULL
