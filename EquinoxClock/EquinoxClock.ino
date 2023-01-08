@@ -18,7 +18,7 @@
 #define DAYLIGHT_SAVINGS_TIME_OFF                 0x00
 #define DAYLIGHT_SAVINGS_TIME_ON                  0x01
 #define DEBOUNCE_INTERVAL                         50
-#define EEPROM_BASE_ADDRESS                       1408
+#define EEPROM_BASE_ADDRESS                       1500
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               8
 #define HOUR_CHUNK_SIZE                           8
@@ -182,6 +182,7 @@ void loop() {
     }
     switch (mode) {
       case PROGRAM:
+        setupOtaUpdates();
         ArduinoOTA.begin();
         break;
     }
@@ -293,7 +294,6 @@ void initializeMode() {
     WiFi.persistent(true);
     timeClient.begin();
     setupHomeKit();
-    setupOtaUpdates();
     setupWebServer();
     mode = NORMAL;
   /* Continue to wait until either a Wi-Fi connection has been established or the initialization times out */
@@ -372,9 +372,7 @@ void changeClockOnOffState(const homekit_value_t value) {
  */
 void colorWipe(uint32_t color) {
   neopixels.clear();
-  for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
-    neopixels.setPixelColor(neopixelIndex, color);
-  }
+  neopixels.fill(color, 0, NEOPIXEL_COUNT);
   neopixels.show();
 }
 
