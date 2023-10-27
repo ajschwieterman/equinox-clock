@@ -7,20 +7,16 @@
 #include <EEPROM.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
-#include <NTPClient.h>
-#include <TimeLib.h>
 #include <Timer.h>
+#include <TZ.h>
 #include <WiFiUdp.h>
 
 #define BUTTON_PIN                                12
-#define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x07
-#define DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS      EEPROM_BASE_ADDRESS + 0x06
-#define DAYLIGHT_SAVINGS_TIME_OFF                 0x00
-#define DAYLIGHT_SAVINGS_TIME_ON                  0x01
+#define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
 #define DEBOUNCE_INTERVAL                         50
 #define EEPROM_BASE_ADDRESS                       1500
 #define EEPROM_DEFAULT                            0xFF
-#define EEPROM_SIZE                               8
+#define EEPROM_SIZE                               7
 #define HOUR_CHUNK_SIZE                           8
 #define HOUR_COLOR_DEFAULT                        NEOPIXEL_COLOR_RED
 #define HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS       EEPROM_BASE_ADDRESS + 0x00
@@ -29,7 +25,7 @@
 #define INITIALIZATION_ERROR_FLASH_COLOR          NEOPIXEL_COLOR_RED
 #define INITIALIZATION_ERROR_FLASH_FREQUENCY_HZ   0.5
 #define INITIALIZATION_TIMEOUT_MS                 30000
-#define MIN_PER_HOUR                              ((time_t)(SECS_PER_HOUR / SECS_PER_MIN))
+#define MIN_PER_HOUR                              ((time_t)60)
 #define MINUTE_CHUNK_SIZE                         4
 #define MINUTE_COLOR_DEFAULT                      NEOPIXEL_COLOR_GREEN
 #define MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS     EEPROM_BASE_ADDRESS + 0x02
@@ -64,8 +60,6 @@
 #define SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS      EEPROM_BASE_ADDRESS + 0x05
 #define SERIAL_MONITOR_BAUD_RATE                  115200
 #define UTC_POOL_SERVER_NAME                      "pool.ntp.org"
-#define UTC_TIME_OFFSET_SECONDS                   -18000  /* For UTC -5.00 : -5 * 60 * 60 */
-#define UTC_UPDATE_INTERVAL_MS                    ((time_t)(SECS_PER_DAY * MS_PER_SEC))
 #define WIFI_SSID                                 ""
 #define WIFI_PASSWORD                             ""
 
@@ -78,7 +72,6 @@ Button button(BUTTON_PIN);
 Adafruit_NeoPixel neopixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 WiFiUDP ntpUDP;
 Photocell photocell(PHOTOCELL_PIN);
-NTPClient timeClient(ntpUDP, UTC_POOL_SERVER_NAME, UTC_TIME_OFFSET_SECONDS, UTC_UPDATE_INTERVAL_MS);
 ESP8266WebServer webServer;
 
 /* Define HomeKit configuration */
@@ -98,12 +91,11 @@ uint8_t bluePigment;
 int brightness;
 uint32_t clockColors[NEOPIXEL_COUNT];
 int currentTimeMilliseconds;
-unsigned long epochTime;
+time_t epochTime;
 int fadingIndex;
 Timer flashTimer(MILLIS);
 uint8_t greenPigment;
 uint16_t hourColor;
-bool inDaylightSavingsTime;
 Timer initializationTimer(MILLIS);
 uint16_t minuteColor;
 Mode mode;
@@ -117,13 +109,14 @@ unsigned long notificationTimeout = NOTIFICATION_TIMEOUT_MS;
 Timer notificationTimer(MILLIS);
 uint32_t previousClockColors[NEOPIXEL_COUNT];
 uint32_t previousColor;
-unsigned long previousEpochTime;
+time_t previousEpochTime;
 Mode previousMode;
 unsigned long previousSystemTime;
 uint8_t redPigment;
 bool savePreviousClockColors;
 uint16_t secondColor;
 unsigned long systemTime;
+tm * timeInfo;
 StaticJsonDocument<500> webServerDoc;
 String webServerJson;
 String webServerMessage;
@@ -217,15 +210,14 @@ void clockMode() {
   /* Monitor any changes from HomeKit */
   arduino_homekit_loop();
   /* Fetch the time from the NTP server */
-  timeClient.update();
   previousEpochTime = epochTime;
-  epochTime = timeClient.getEpochTime() + daylightSavingsTime();
+  time(&epochTime);
   /* Save the color information of the hands every hour */
-  if (hour(epochTime) != hour(previousEpochTime)) {
+  if (hour(&epochTime) != hour(&previousEpochTime)) {
     writeEEPROM();
   }
   /* Change the clock hands' colors every second */
-  if (second(epochTime) != second(previousEpochTime)) {
+  if (second(&epochTime) != second(&previousEpochTime)) {
     hourColor = (hourColor + 1) & 0xFFFF;
     minuteColor = (minuteColor + 1) & 0xFFFF;
     secondColor = (secondColor + 1) & 0xFFFF;
@@ -245,9 +237,9 @@ void clockMode() {
     savePreviousClockColors = true;
   }
   /* Get the neopixel indexes of the hours, minutes, and seconds hands */
-  neopixelIndexHour = ((hour(epochTime) % 12) * 5 * NEOPIXEL_PER_MIN) + (minute(epochTime) * NEOPIXEL_PER_MIN / 12);
-  neopixelIndexMinute = (minute(epochTime) * NEOPIXEL_PER_MIN) + (second(epochTime) * NEOPIXEL_PER_MIN / MIN_PER_HOUR);
-  neopixelIndexSecond = (second(epochTime) * NEOPIXEL_PER_MIN) + (currentTimeMilliseconds / (MS_PER_SEC / NEOPIXEL_PER_MIN));
+  neopixelIndexHour = ((hour(&epochTime) % 12) * 5 * NEOPIXEL_PER_MIN) + (minute(&epochTime) * NEOPIXEL_PER_MIN / 12);
+  neopixelIndexMinute = (minute(&epochTime) * NEOPIXEL_PER_MIN) + (second(&epochTime) * NEOPIXEL_PER_MIN / MIN_PER_HOUR);
+  neopixelIndexSecond = (second(&epochTime) * NEOPIXEL_PER_MIN) + (currentTimeMilliseconds / (MS_PER_SEC / NEOPIXEL_PER_MIN));
   /* Prepare the clock's colors for new values */
   for (int index = 0; index < NEOPIXEL_COUNT; index++) {
     clockColors[index] = neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, NEOPIXEL_VALUE_OFF);
@@ -292,8 +284,8 @@ void initializeMode() {
     initializationTimer.stop();
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
-    timeClient.begin();
     setupHomeKit();
+    setupNtpServer();
     setupWebServer();
     mode = NORMAL;
   /* Continue to wait until either a Wi-Fi connection has been established or the initialization times out */
@@ -377,33 +369,6 @@ void colorWipe(uint32_t color) {
 }
 
 /**
- * Return the amount of seconds to add to the current time if we are in daylight savings time.
- * 
- * @return The amount of seconds to add for daylight savings time
- */
-unsigned long daylightSavingsTime() {
-  /* Daylight savings time starts on the second Sunday of March at 2am */
-  if ((month(epochTime) == 3) && 
-      (day(epochTime) >= 8) && (day(epochTime) <= 14) &&
-      (weekday(epochTime) == 1) &&
-      (hour(epochTime) == 2) &&
-      (!inDaylightSavingsTime)) {
-        inDaylightSavingsTime = true;
-        writeEEPROM();
-  }
-  /* Daylight savings time ends on the first Sunday of November at 2am */
-  if ((month(epochTime) == 11) &&
-      (day(epochTime) >= 1) && (day(epochTime) <= 7) &&
-      (weekday(epochTime) == 1) &&
-      (hour(epochTime) == 2) &&
-      (inDaylightSavingsTime)) {
-        inDaylightSavingsTime = false;
-        writeEEPROM();
-  }
-  return (inDaylightSavingsTime ? SECS_PER_HOUR : 0);
-}
-
-/**
  * Fade two colors into one.
  * 
  * @param previousColor   The previous color to fade from
@@ -432,10 +397,31 @@ void flash(uint16_t color, double frequency) {
 }
 
 /**
+ * Convert the epoch time into an object that formats the time into readable language
+ * 
+ * @param time The epoch time to convert
+ * @return tm* Pointer to the timeInfo object
+ */
+tm * getTimeInfo(time_t * time) {
+  timeInfo = localtime(time);
+  return timeInfo;
+}
+
+/**
  * Get the 'Green' component of a 32-bit color
  */
 uint8_t green(uint32_t color) {
   return (color >> 8) & 0xFF;
+}
+
+/**
+ * Get the 'hour' component of an epoch time
+ * 
+ * @param time Pointer to the epoch time
+ * @return int The 'hour' in the timestamp
+ */
+int hour(time_t * time) {
+  return getTimeInfo(time)->tm_hour;
 }
 
 /**
@@ -453,10 +439,30 @@ double mapf(double x, double in_min, double in_max, double out_min, double out_m
 }
 
 /**
+ * Get the 'minute' component of an epoch time
+ * 
+ * @param time Pointer to the epoch time
+ * @return int The 'minute' in the timestamp
+ */
+int minute(time_t * time) {
+  return getTimeInfo(time)->tm_min;
+}
+
+/**
  * Get the 'Red' component of a 32-bit color
  */
 uint8_t red(uint32_t color) {
   return (color >> 16) & 0xFF;
+}
+
+/**
+ * Get the 'second' component of an epoch time
+ * 
+ * @param time Pointer to the epoch time
+ * @return int The 'second' in the timestamp
+ */
+int second(time_t * time) {
+  return getTimeInfo(time)->tm_sec;
 }
 
 /**
@@ -497,14 +503,12 @@ void setupEEPROM() {
     hourColor = HOUR_COLOR_DEFAULT;
     minuteColor = MINUTE_COLOR_DEFAULT;
     secondColor = SECOND_COLOR_DEFAULT;
-    inDaylightSavingsTime = false;
     writeEEPROM();
   /* Load hand colors and DST information from EEPROM if the data is valid */
   } else {
     hourColor = (EEPROM.read(HOUR_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(HOUR_COLOR_LOW_BYTE_EEPROM_ADDRESS);
     minuteColor = (EEPROM.read(MINUTE_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS);
     secondColor = (EEPROM.read(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS) << 8) | EEPROM.read(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS);
-    inDaylightSavingsTime = (EEPROM.read(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS) == DAYLIGHT_SAVINGS_TIME_ON);
   }
 }
 
@@ -518,6 +522,18 @@ void setupHomeKit() {
   homekitOnOffCharacteristic.setter = changeClockOnOffState;
   /* Configure and start the HomeKit service */
   arduino_homekit_setup(&homekitConfiguration);
+}
+
+/**
+ * After connecting to Wi-Fi, setup the NTP server connection to fetch the local time.
+ */
+void setupNtpServer() {
+  /* Configure the NTP server connectio */
+  configTime(TZ_America_Detroit, UTC_POOL_SERVER_NAME);
+  /* Wait until the first valid timestamp has been received */
+  while (!time(nullptr)) {
+    delay(1000);
+  }
 }
 
 /**
@@ -610,7 +626,6 @@ void writeEEPROM() {
   EEPROM.write(MINUTE_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(minuteColor));
   EEPROM.write(SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS, highByte(secondColor));
   EEPROM.write(SECOND_COLOR_LOW_BYTE_EEPROM_ADDRESS, lowByte(secondColor));
-  EEPROM.write(DAYLIGHT_SAVINGS_TIME_EEPROM_ADDRESS, inDaylightSavingsTime ? DAYLIGHT_SAVINGS_TIME_ON : DAYLIGHT_SAVINGS_TIME_OFF);
   EEPROM.commit();
   /* Write the checksum value of the configuration values to EEPROM */
   EEPROM.write(CHECKSUM_EEPROM_ADDRESS, calculateChecksum());

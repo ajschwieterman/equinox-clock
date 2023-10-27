@@ -25,10 +25,8 @@ Use the following instructions to install the Adafruit board libraries and confi
 - [Hardware Configuration](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266#recommended-settings-in-ide)
 
 # Required Arduino libraries
-- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.10.7
-- [ArduinoJson](https://github.com/bblanchon/ArduinoJson) v6.19.4
+- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.11.0
+- [ArduinoJson](https://github.com/bblanchon/ArduinoJson) v6.21.3
 - [BobaBlox](https://github.com/robertgallup/BobaBlox) v2.0.1
 - [HomeKit-ESP8266](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266) v1.2.0
-- [NTPClient](https://github.com/arduino-libraries/NTPClient) v3.2.1
-- [Time](https://playground.arduino.cc/Code/Time/) v1.6.1
 - [Timer](https://github.com/sstaub/Timer) v1.2.1
