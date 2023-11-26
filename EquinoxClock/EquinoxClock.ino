@@ -1,15 +1,10 @@
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
-#include <arduino_homekit_server.h>
-#include <ArduinoJson.h>
-#include <ArduinoOTA.h>
 #include <BobaBlox.h>
 #include <EEPROM.h>
-#include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <Timer.h>
 #include <TZ.h>
-#include <WiFiUdp.h>
 
 #define BUTTON_PIN                                12
 #define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
@@ -44,16 +39,8 @@
 #define NEOPIXEL_SATURATION_OFF                   0x00
 #define NEOPIXEL_SATURATION_ON                    0xFF
 #define NEOPIXEL_VALUE_OFF                        0x00
-#define NOTIFICATION_FLASH_COLOR                  NEOPIXEL_COLOR_ORANGE
-#define NOTIFICATION_FLASH_FREQUENCY_HZ           0.5
-#define NOTIFICATION_TIMEOUT_MS                   10000
 #define PHOTOCELL_MINIMUM_BRIGHTNESS              5
 #define PHOTOCELL_PIN                             A0
-#define PROGRAM_END_COLOR                         NEOPIXEL_COLOR_GREEN
-#define PROGRAM_ERROR_COLOR                       NEOPIXEL_COLOR_RED
-#define PROGRAM_FLASH_COLOR                       NEOPIXEL_COLOR_BLUE
-#define PROGRAM_FLASH_FREQUENCY_HZ                0.5
-#define PROGRAM_PROGRESS_COLOR                    NEOPIXEL_COLOR_ORANGE
 #define SECOND_CHUNK_SIZE                         2
 #define SECOND_COLOR_DEFAULT                      NEOPIXEL_COLOR_BLUE
 #define SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS     EEPROM_BASE_ADDRESS + 0x04
@@ -70,20 +57,12 @@
 /** Define hardware */
 Button button(BUTTON_PIN);
 Adafruit_NeoPixel neopixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
-WiFiUDP ntpUDP;
 Photocell photocell(PHOTOCELL_PIN);
-ESP8266WebServer webServer;
-
-/* Define HomeKit configuration */
-extern "C" homekit_server_config_t homekitConfiguration;
-extern "C" homekit_characteristic_t homekitOnOffCharacteristic;
 
 /* Define modes */
 enum Mode {
   INITIALIZE,
-  NORMAL,
-  NOTIFICATION,
-  PROGRAM
+  NORMAL
 };
 
 /* Other variables */
@@ -97,16 +76,13 @@ Timer flashTimer(MILLIS);
 uint8_t greenPigment;
 uint16_t hourColor;
 Timer initializationTimer(MILLIS);
+bool ledsOn = true;
 uint16_t minuteColor;
 Mode mode;
 int neopixelIndexHour;
 int neopixelIndexMinute;
 int neopixelIndexSecond;
 uint32_t newColor;
-uint16_t notificationColor = NOTIFICATION_FLASH_COLOR;
-double notificationFrequency = NOTIFICATION_FLASH_FREQUENCY_HZ;
-unsigned long notificationTimeout = NOTIFICATION_TIMEOUT_MS;
-Timer notificationTimer(MILLIS);
 uint32_t previousClockColors[NEOPIXEL_COUNT];
 uint32_t previousColor;
 time_t previousEpochTime;
@@ -117,9 +93,6 @@ bool savePreviousClockColors;
 uint16_t secondColor;
 unsigned long systemTime;
 tm * timeInfo;
-StaticJsonDocument<500> webServerDoc;
-String webServerJson;
-String webServerMessage;
 
 //------------------------------------------------------------------------------------------------------------------------
 
@@ -149,18 +122,11 @@ void loop() {
   systemTime = millis();
   /* Set the brightness level of the neopixels based on the ambient light */
   brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(photocell.value(0, 255)));
-  /* Monitor for any HTTP requests */
-  if (mode != INITIALIZE) {
-    webServer.handleClient();
-  }
-  /* Change the clock mode if the button was pressed */
+  /* Toggle the clock LEDs if the button was pressed */
   if (button.wasPressed()) {
     switch (mode) {
       case NORMAL:
-        mode = PROGRAM;
-        break;
-      case PROGRAM:
-        mode = NORMAL;
+        ledsOn = !ledsOn;
         break;
     }
   }
@@ -168,15 +134,7 @@ void loop() {
   if (mode != previousMode) {
     switch (previousMode) {
       case INITIALIZE:
-      case NOTIFICATION:
-      case PROGRAM:
         flashTimer.stop();
-        break;
-    }
-    switch (mode) {
-      case PROGRAM:
-        setupOtaUpdates();
-        ArduinoOTA.begin();
         break;
     }
     previousMode = mode;
@@ -188,12 +146,6 @@ void loop() {
       break;
     case NORMAL:
       clockMode();
-      break;
-    case PROGRAM:
-      programMode();
-      break;
-    case NOTIFICATION:
-      notificationMode();
       break;
   }
 }
@@ -207,8 +159,6 @@ void loop() {
  * "hands" are stored to be restored in the event of a power cycle.
  */
 void clockMode() {
-  /* Monitor any changes from HomeKit */
-  arduino_homekit_loop();
   /* Fetch the time from the NTP server */
   previousEpochTime = epochTime;
   time(&epochTime);
@@ -250,7 +200,7 @@ void clockMode() {
   setClockHandColors(neopixelIndexSecond, SECOND_CHUNK_SIZE, secondColor);
   /* Apply fading effect to the clock's hands and display the colors of the clock */
   neopixels.clear();
-  if(homekitOnOffCharacteristic.value.bool_value) {
+  if (ledsOn) {
     for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
       previousColor = previousClockColors[neopixelIndex];
       newColor = clockColors[neopixelIndex];
@@ -284,44 +234,12 @@ void initializeMode() {
     initializationTimer.stop();
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
-    setupHomeKit();
     setupNtpServer();
-    setupWebServer();
     mode = NORMAL;
   /* Continue to wait until either a Wi-Fi connection has been established or the initialization times out */
   } else {
     delay(INITIALIZATION_DELAY_MS);
   }
-}
-
-/**
- * Notification mode will flash a notification color at a frequency and duration specified by the HTTP request 
- * received. After the duration has passed, normal operations will be resumed.
- */
-void notificationMode() {
-  /* Start the notification timer */
-  if (notificationTimer.state() != RUNNING) {
-    notificationTimer.start();
-  /* Once the notification timer times out, return to normal operations */
-  } else if (notificationTimer.read() >= notificationTimeout) {
-    notificationTimer.stop();
-    mode = NORMAL;
-  /* The notification timer has not timed out yet, so continue flashing the notification color */
-  } else {
-    flash(notificationColor, notificationFrequency);
-  }
-}
-
-/**
- * Program mode allows the board to be flashed with a new application via over-the-air updates. It will flash the 
- * program color until either a new application has been flashed or program mode has been exited and normal mode has 
- * been resumed via the "mode button" pressed by a user.
- */
-void programMode() {
-  /* Flash the neopixels to indicate programming mode */
-  flash(PROGRAM_FLASH_COLOR, PROGRAM_FLASH_FREQUENCY_HZ);
-  /* Handle incoming over-the-air updates */
-  ArduinoOTA.handle();
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -346,15 +264,6 @@ uint8_t calculateChecksum() {
     }
   }
   return checksum;
-}
-
-/**
- * Change the on/off state of the clock via HomeKit.
- * 
- * @param value True to turn the clock on; False to turn the clock off
- */
-void changeClockOnOffState(const homekit_value_t value) {
-	homekitOnOffCharacteristic.value.bool_value = value.bool_value;
 }
 
 /**
@@ -513,18 +422,6 @@ void setupEEPROM() {
 }
 
 /**
- * After connecting to Wi-Fi, setup the HomeKit server to add this accessory in the Home app of iOS and control 
- * the on/off state of the clock (only in NORMAL mode).
- */
-void setupHomeKit() {
-  // homekit_storage_reset();
-  /* Call a function to change the on/off state of the clock when HomeKit updates */
-  homekitOnOffCharacteristic.setter = changeClockOnOffState;
-  /* Configure and start the HomeKit service */
-  arduino_homekit_setup(&homekitConfiguration);
-}
-
-/**
  * After connecting to Wi-Fi, setup the NTP server connection to fetch the local time.
  */
 void setupNtpServer() {
@@ -534,85 +431,10 @@ void setupNtpServer() {
   while (!time(nullptr)) {
     delay(1000);
   }
-}
-
-/**
- * After connecting to Wi-Fi, set up over-the-air updates to reflash the application over Wi-Fi rather than through
- * the USB cable.
- */
-void setupOtaUpdates() {
-  /* Method to call when programming mode has started */
-  ArduinoOTA.onStart([]() {
-    colorWipe(neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, NEOPIXEL_VALUE_OFF));
-  });
-  /* Method to call when programming mode has ended */
-  ArduinoOTA.onEnd([]() {
-    colorWipe(neopixels.ColorHSV(PROGRAM_END_COLOR, NEOPIXEL_SATURATION_ON, brightness));
-  });
-  /* Method to call while programming */
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    neopixels.clear();
-    for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
-      if (neopixelIndex < map(progress, 0, total, 0, NEOPIXEL_COUNT)) {
-        neopixels.setPixelColor(neopixelIndex, neopixels.ColorHSV(PROGRAM_PROGRESS_COLOR, NEOPIXEL_SATURATION_ON, brightness));
-      } else {
-        neopixels.setPixelColor(neopixelIndex, neopixels.ColorHSV(NEOPIXEL_COLOR_WHITE, NEOPIXEL_SATURATION_OFF, NEOPIXEL_VALUE_OFF));
-      }
-    }
-    neopixels.show();
-  });
-  /* Method to call when an error occurs when programming */
-  ArduinoOTA.onError([](ota_error_t error) {
-    colorWipe(neopixels.ColorHSV(PROGRAM_ERROR_COLOR, NEOPIXEL_SATURATION_ON, brightness));
-  });
-}
-
-/**
- * After connecting to Wi-Fi, set up the web server to receive HTTP requests for tasks.
- */
-void setupWebServer() {
-  /* Return the ambient brightness when requested */
-  webServer.on("/equinox", [](){
-    webServerJson = "";
-    webServerDoc["brightness"] = brightness;
-    serializeJsonPretty(webServerDoc, webServerJson);
-    webServer.send(200, "application/json", webServerJson);
-  });
-  /* Begin normal operations when requested */
-  webServer.on("/normal", [](){
-    mode = NORMAL;
-    webServerMessage = "Normal mode initiated";
-    webServer.send(200, "text/plain", webServerMessage);
-  });
-  /* Begin notification mode when requested with some customization to the flashing and timing parameters */
-  webServer.on("/notify", [](){
-    mode = NOTIFICATION;
-    notificationTimer.stop();
-    webServerMessage = "Number of args received:";
-    webServerMessage += webServer.args();
-    webServerMessage += "\n";
-    for (int argsIndex = 0; argsIndex < webServer.args(); argsIndex++) {
-      if (webServer.argName(argsIndex) == "color") {
-        notificationColor = webServer.arg(argsIndex).toInt();
-      } else if (webServer.argName(argsIndex) == "duration") {
-        notificationTimeout = webServer.arg(argsIndex).toInt();
-      } else if (webServer.argName(argsIndex) == "flash") {
-        notificationFrequency = webServer.arg(argsIndex).toInt();
-      }
-      webServerMessage += "Arg n�" + (String)argsIndex + " �> ";
-      webServerMessage += webServer.argName(argsIndex) + ": ";
-      webServerMessage += webServer.arg(argsIndex) + "\n";
-    }
-    webServer.send(200, "text/plain", webServerMessage);
-  });
-  /* Begin programming mode when requested */
-  webServer.on("/program", [](){
-    mode = PROGRAM;
-    webServerMessage = "Program mode initiated";
-    webServer.send(200, "text/plain", webServerMessage);
-  });
-  /* Start the web server service */
-  webServer.begin();
+  delay(1000);
+  /* Save the first valid timestamp */
+  time(&epochTime);
+  previousEpochTime = epochTime;
 }
 
 /**

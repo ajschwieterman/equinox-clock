@@ -22,11 +22,8 @@ Below is the circuit diagram for the buttons, light sensor, and NeoPixels.
 
 Use the following instructions to install the Adafruit board libraries and configure the ESP8266 hardware.
 - [Board Libraries Installation](https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/using-arduino-ide)
-- [Hardware Configuration](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266#recommended-settings-in-ide)
 
 # Required Arduino libraries
-- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.11.0
-- [ArduinoJson](https://github.com/bblanchon/ArduinoJson) v6.21.3
+- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.12.0
 - [BobaBlox](https://github.com/robertgallup/BobaBlox) v2.0.1
-- [HomeKit-ESP8266](https://github.com/Mixiaoxiao/Arduino-HomeKit-ESP8266) v1.2.0
 - [Timer](https://github.com/sstaub/Timer) v1.2.1
