@@ -17,7 +17,7 @@ Below is the circuit diagram for the buttons, light sensor, and NeoPixels.
 ![Main](https://github.com/ajschwieterman/equinox-clock/blob/master/schematic.png)
 
 # Required board libraries
-- [esp8266](https://github.com/esp8266/Arduino) v3.0.2
+- [esp8266](https://github.com/esp8266/Arduino) v3.1.2
   - Adafruit Feather HUZZAH ESP8266
 
 Use the following instructions to install the Adafruit board libraries and configure the ESP8266 hardware.
@@ -25,5 +25,6 @@ Use the following instructions to install the Adafruit board libraries and confi
 
 # Required Arduino libraries
 - [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.12.0
-- [BobaBlox](https://github.com/robertgallup/BobaBlox) v2.0.1
+- [Button](https://github.com/madleech/Button) v1.0.0
+- [LightDependentResistor](https://github.com/QuentinCG/Arduino-Light-Dependent-Resistor-Library) v1.4.0
 - [Timer](https://github.com/sstaub/Timer) v1.2.1

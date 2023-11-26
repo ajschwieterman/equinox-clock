@@ -1,14 +1,14 @@
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
-#include <BobaBlox.h>
+#include <Button.h>
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
+#include <LightDependentResistor.h>
 #include <Timer.h>
 #include <TZ.h>
 
 #define BUTTON_PIN                                12
 #define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
-#define DEBOUNCE_INTERVAL                         50
 #define EEPROM_BASE_ADDRESS                       1500
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               7
@@ -39,8 +39,10 @@
 #define NEOPIXEL_SATURATION_OFF                   0x00
 #define NEOPIXEL_SATURATION_ON                    0xFF
 #define NEOPIXEL_VALUE_OFF                        0x00
+#define PHOTOCELL_KIND                            LightDependentResistor::GL5528
 #define PHOTOCELL_MINIMUM_BRIGHTNESS              5
 #define PHOTOCELL_PIN                             A0
+#define PHOTOCELL_RESISTOR                        470
 #define SECOND_CHUNK_SIZE                         2
 #define SECOND_COLOR_DEFAULT                      NEOPIXEL_COLOR_BLUE
 #define SECOND_COLOR_HIGH_BYTE_EEPROM_ADDRESS     EEPROM_BASE_ADDRESS + 0x04
@@ -57,7 +59,7 @@
 /** Define hardware */
 Button button(BUTTON_PIN);
 Adafruit_NeoPixel neopixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
-Photocell photocell(PHOTOCELL_PIN);
+LightDependentResistor photocell(PHOTOCELL_PIN, PHOTOCELL_RESISTOR, PHOTOCELL_KIND);
 
 /* Define modes */
 enum Mode {
@@ -101,10 +103,14 @@ void setup() {
   // Serial.begin(SERIAL_MONITOR_BAUD_RATE);
   /* Start the EEPROM service */
   setupEEPROM();
+  /* Start the button service */
+  button.begin();
   /* Start the NeoPixel service */
   neopixels.begin();
   neopixels.clear();
   neopixels.show();
+  /* Start the photocell service */
+  photocell.setPhotocellPositionOnGround(false);
   /* Start the Wi-Fi service */
   WiFi.disconnect();
   WiFi.persistent(false);
@@ -121,9 +127,9 @@ void loop() {
   previousSystemTime = systemTime;
   systemTime = millis();
   /* Set the brightness level of the neopixels based on the ambient light */
-  brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(photocell.value(0, 255)));
+  brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(mapf(photocell.getCurrentRawAnalogValue(), 0, 1024, 0, 255)));
   /* Toggle the clock LEDs if the button was pressed */
-  if (button.wasPressed()) {
+  if (button.released()) {
     switch (mode) {
       case NORMAL:
         ledsOn = !ledsOn;
