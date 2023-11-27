@@ -9,7 +9,7 @@
 
 #define BUTTON_PIN                                12
 #define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
-#define EEPROM_BASE_ADDRESS                       1500
+#define EEPROM_BASE_ADDRESS                       0
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               7
 #define HOUR_CHUNK_SIZE                           8
@@ -116,6 +116,7 @@ void setup() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
+  WiFi.setOutputPower(19.5);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   /* Start in initialize mode */
   mode = INITIALIZE;
