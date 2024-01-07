@@ -9,6 +9,7 @@
 
 #define BUTTON_PIN                                12
 #define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
+#define CYCLE_TIME_MS                             50
 #define EEPROM_BASE_ADDRESS                       0
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               7
@@ -116,7 +117,6 @@ void setup() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  WiFi.setOutputPower(19.5);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   /* Start in initialize mode */
   mode = INITIALIZE;
@@ -218,6 +218,8 @@ void clockMode() {
     }
   }
   neopixels.show();
+  /* Wait until the cycle time has elapsed */
+  delay(abs(CYCLE_TIME_MS - (int)(millis() - systemTime)));
 }
 
 /**
@@ -279,9 +281,12 @@ uint8_t calculateChecksum() {
  * @param color   The color/hue to set.
  */
 void colorWipe(uint32_t color) {
+  /* Set the color of all the pixels */
   neopixels.clear();
   neopixels.fill(color, 0, NEOPIXEL_COUNT);
   neopixels.show();
+  /* Wait until the cycle time has elapsed */
+  delay(abs(CYCLE_TIME_MS - (int)(millis() - systemTime)));
 }
 
 /**
