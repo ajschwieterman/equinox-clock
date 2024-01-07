@@ -450,6 +450,14 @@ void setupNtpServer() {
 }
 
 /**
+ * Change the frequency at which the time is fetched from the NTP server.  By default, the time is fetched every 
+ * hour, but this function changes the update frequency to every 24 hours.
+ */
+uint32_t sntp_update_delay_MS_rfc_not_less_than_15000() {
+  return 86400000;
+}
+
+/**
  * Write the configuration values to EEPROM along with the checksum to validate the data upon the next initialization.
  */
 void writeEEPROM() {
