@@ -91,6 +91,7 @@ uint32_t previousColor;
 time_t previousEpochTime;
 Mode previousMode;
 unsigned long previousSystemTime;
+unsigned long previousClockModeTime;
 uint8_t redPigment;
 bool savePreviousClockColors;
 uint16_t secondColor;
@@ -217,9 +218,10 @@ void clockMode() {
       neopixels.setPixelColor(neopixelIndex, neopixels.Color(redPigment, greenPigment, bluePigment));
     }
   }
-  neopixels.show();
-  /* Wait until the cycle time has elapsed */
-  delay(abs(CYCLE_TIME_MS - (int)(millis() - systemTime)));
+  if((systemTime - previousClockModeTime) >= CYCLE_TIME_MS) {
+    previousClockModeTime = systemTime;
+    neopixels.show();
+  }
 }
 
 /**
