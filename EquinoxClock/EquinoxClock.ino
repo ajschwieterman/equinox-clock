@@ -4,12 +4,13 @@
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <LightDependentResistor.h>
+#include <NeoPixelBus.h>
 #include <Timer.h>
 #include <TZ.h>
 
 #define BUTTON_PIN                                12
 #define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
-#define CYCLE_TIME_MS                             50
+#define CYCLE_TIME_MS                             25
 #define EEPROM_BASE_ADDRESS                       0
 #define EEPROM_DEFAULT                            0xFF
 #define EEPROM_SIZE                               7
@@ -20,7 +21,7 @@
 #define INITIALIZATION_DELAY_MS                   500
 #define INITIALIZATION_ERROR_FLASH_COLOR          NEOPIXEL_COLOR_RED
 #define INITIALIZATION_ERROR_FLASH_FREQUENCY_HZ   0.5
-#define INITIALIZATION_TIMEOUT_MS                 30000
+#define INITIALIZATION_TIMEOUT_MS                 300000
 #define MIN_PER_HOUR                              ((time_t)60)
 #define MINUTE_CHUNK_SIZE                         4
 #define MINUTE_COLOR_DEFAULT                      NEOPIXEL_COLOR_GREEN
@@ -60,6 +61,7 @@
 /** Define hardware */
 Button button(BUTTON_PIN);
 Adafruit_NeoPixel neopixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
+NeoPixelBus<NeoGrbFeature, NeoWs2812xMethod> neopixelsNew(NEOPIXEL_COUNT, NEOPIXEL_PIN);
 LightDependentResistor photocell(PHOTOCELL_PIN, PHOTOCELL_RESISTOR, PHOTOCELL_KIND);
 
 /* Define modes */
@@ -108,9 +110,9 @@ void setup() {
   /* Start the button service */
   button.begin();
   /* Start the NeoPixel service */
-  neopixels.begin();
-  neopixels.clear();
-  neopixels.show();
+  neopixelsNew.Begin();
+  neopixelsNew.ClearTo(RgbColor(0, 0, 0));
+  neopixelsNew.Show();
   /* Start the photocell service */
   photocell.setPhotocellPositionOnGround(false);
   /* Start the Wi-Fi service */
@@ -207,7 +209,7 @@ void clockMode() {
   setClockHandColors(neopixelIndexMinute, MINUTE_CHUNK_SIZE, minuteColor);
   setClockHandColors(neopixelIndexSecond, SECOND_CHUNK_SIZE, secondColor);
   /* Apply fading effect to the clock's hands and display the colors of the clock */
-  neopixels.clear();
+  neopixelsNew.ClearTo(RgbColor(0, 0, 0));
   if (ledsOn) {
     for (int neopixelIndex = 0; neopixelIndex < NEOPIXEL_COUNT; neopixelIndex++) {
       previousColor = previousClockColors[neopixelIndex];
@@ -215,12 +217,12 @@ void clockMode() {
       redPigment = fade(red(previousColor), red(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
       greenPigment = fade(green(previousColor), green(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
       bluePigment = fade(blue(previousColor), blue(newColor), fadingIndex, NEOPIXEL_FADING_TIME_MS);
-      neopixels.setPixelColor(neopixelIndex, neopixels.Color(redPigment, greenPigment, bluePigment));
+      neopixelsNew.SetPixelColor(neopixelIndex, RgbColor(redPigment, greenPigment, bluePigment));
     }
   }
   if((systemTime - previousClockModeTime) >= CYCLE_TIME_MS) {
     previousClockModeTime = systemTime;
-    neopixels.show();
+    neopixelsNew.Show();
   }
 }
 
@@ -284,9 +286,8 @@ uint8_t calculateChecksum() {
  */
 void colorWipe(uint32_t color) {
   /* Set the color of all the pixels */
-  neopixels.clear();
-  neopixels.fill(color, 0, NEOPIXEL_COUNT);
-  neopixels.show();
+  neopixelsNew.ClearTo(RgbColor(red(color), green(color), blue(color)));
+  neopixelsNew.Show();
   /* Wait until the cycle time has elapsed */
   delay(abs(CYCLE_TIME_MS - (int)(millis() - systemTime)));
 }
