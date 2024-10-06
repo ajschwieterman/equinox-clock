@@ -24,7 +24,8 @@ Use the following instructions to install the Adafruit board libraries and confi
 - [Board Libraries Installation](https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/using-arduino-ide)
 
 # Required Arduino libraries
-- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.12.0
+- [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) v1.12.3
 - [Button](https://github.com/madleech/Button) v1.0.0
 - [LightDependentResistor](https://github.com/QuentinCG/Arduino-Light-Dependent-Resistor-Library) v1.4.0
+- [NeoPixelBus](https://github.com/Makuna/NeoPixelBus) v2.8.3
 - [Timer](https://github.com/sstaub/Timer) v1.2.1
