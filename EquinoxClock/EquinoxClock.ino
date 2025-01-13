@@ -8,6 +8,7 @@
 #include <Timer.h>
 #include <TZ.h>
 
+#define BRIGHTNESS_MEASUREMENT_COUNT              350
 #define BUTTON_PIN                                12
 #define CHECKSUM_EEPROM_ADDRESS                   EEPROM_BASE_ADDRESS + 0x06
 #define CYCLE_TIME_MS                             25
@@ -73,6 +74,7 @@ enum Mode {
 /* Other variables */
 uint8_t bluePigment;
 int brightness;
+int brightnessMeasurements[BRIGHTNESS_MEASUREMENT_COUNT];
 uint32_t clockColors[NEOPIXEL_COUNT];
 int currentTimeMilliseconds;
 time_t epochTime;
@@ -131,7 +133,15 @@ void loop() {
   previousSystemTime = systemTime;
   systemTime = millis();
   /* Set the brightness level of the neopixels based on the ambient light */
-  brightness = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(mapf(photocell.getCurrentRawAnalogValue(), 0, 1024, 0, 255)));
+  for(int i = BRIGHTNESS_MEASUREMENT_COUNT - 1; i > 0; i--) {
+    brightnessMeasurements[i] = brightnessMeasurements[i - 1];
+  }
+  brightnessMeasurements[0] = max(PHOTOCELL_MINIMUM_BRIGHTNESS, (int)neopixels.gamma8(mapf(photocell.getCurrentRawAnalogValue(), 0, 1024, 0, 255)));
+  brightness = 0;
+  for(int i = 0; i < BRIGHTNESS_MEASUREMENT_COUNT; i++) {
+    brightness += brightnessMeasurements[i];
+  }
+  brightness /= BRIGHTNESS_MEASUREMENT_COUNT;
   /* Toggle the clock LEDs if the button was pressed */
   if (button.released()) {
     switch (mode) {
